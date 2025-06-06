@@ -1,3 +1,37 @@
+from typing import Dict, List, Any
+from dataclasses import dataclass
+from enum import Enum
+
+class OptimizationType(Enum):
+    COST_REDUCTION = "cost_reduction"
+    SECURITY_IMPROVEMENT = "security_improvement"
+    PERFORMANCE_OPTIMIZATION = "performance_optimization"
+    COMPLIANCE_FIX = "compliance_fix"
+    CLEANUP = "cleanup"
+
+class Priority(Enum):
+    CRITICAL = "critical"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+@dataclass
+class OptimizationRecommendation:
+    id: str
+    title: str
+    description: str
+    optimization_type: OptimizationType
+    priority: Priority
+    estimated_monthly_savings: float
+    implementation_effort: str  # "Low", "Medium", "High"
+    risk_level: str  # "Low", "Medium", "High"
+    resources_affected: List[str]
+    implementation_steps: List[str]
+    cli_commands: List[str]
+    rollback_plan: str
+    compliance_impact: List[str]
+    dependencies: List[str]
+
 class InfrastructureOptimizer:
     """Analizzatore e ottimizzatore completo dell'infrastruttura"""
     
@@ -669,42 +703,3 @@ class InfrastructureOptimizer:
                 report_lines.append("")
         
         return "\n".join(report_lines)
-            # utils/infrastructure_optimizer.py
-from typing import Dict, List, Any, Tuple
-from datetime import datetime, timedelta
-import json
-from dataclasses import dataclass
-from enum import Enum
-
-class OptimizationType(Enum):
-    COST_REDUCTION = "cost_reduction"
-    SECURITY_IMPROVEMENT = "security_improvement"
-    PERFORMANCE_OPTIMIZATION = "performance_optimization"
-    COMPLIANCE_FIX = "compliance_fix"
-    CLEANUP = "cleanup"
-
-class Priority(Enum):
-    CRITICAL = "critical"
-    HIGH = "high"
-    MEDIUM = "medium"
-    LOW = "low"
-
-@dataclass
-class OptimizationRecommendation:
-    id: str
-    title: str
-    description: str
-    optimization_type: OptimizationType
-    priority: Priority
-    estimated_monthly_savings: float
-    implementation_effort: str  # "Low", "Medium", "High"
-    risk_level: str  # "Low", "Medium", "High"
-    resources_affected: List[str]
-    implementation_steps: List[str]
-    cli_commands: List[str]
-    rollback_plan: str
-    compliance_impact: List[str]
-    dependencies: List[str]
-
-class InfrastructureOptimizer:
-    """Analizzatore e ottimizzatore completo dell'infrastruttura AWS"""
