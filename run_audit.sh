@@ -19,7 +19,6 @@ done
 echo "== ANALISI TRASVERSALE =="
 python3 scripts/analyze_usage.py
 
-echo "== VISUALIZZAZIONE =="
-python3 scripts/visualizer.py
-
 echo "✅ Audit completo terminato!"
+echo "🚀 Avvio della dashboard Streamlit..."
+streamlit run app.py
