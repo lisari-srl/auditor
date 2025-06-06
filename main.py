@@ -1,7 +1,7 @@
 # main.py
 #!/usr/bin/env python3
 """
-AWS Infrastructure Security Auditor - Versione Ottimizzata
+AWS Infrastructure Security Auditor - Versione Ottimizzata v2.1
 """
 
 import asyncio
@@ -9,6 +9,7 @@ import argparse
 import sys
 import os
 import time
+import shutil
 from typing import List, Optional
 from pathlib import Path
 
@@ -39,39 +40,134 @@ class AWSAuditor:
         for region in self.config.regions:
             self.audit_engines[region] = AuditEngine(region)
     
-    async def run_full_audit(self, use_cache: bool = True) -> dict:
-        """Esegue audit completo: fetch + analyze + report"""
-        print("🚀 Avvio AWS Security Audit...")
+    def cleanup_old_data(self):
+        """Pulisce dati vecchi e cache obsolete"""
+        print("🧹 Pulizia dati obsoleti...")
+        
+        # Pulisci cache
+        if hasattr(self.cache, 'clear_cache'):
+            self.cache.clear_cache()
+            print("   ✅ Cache pulita")
+        
+        # Pulisci directory temporanee
+        temp_dirs = [".cache", "temp", "__pycache__"]
+        for temp_dir in temp_dirs:
+            if os.path.exists(temp_dir):
+                try:
+                    if temp_dir == "__pycache__":
+                        for root, dirs, files in os.walk("."):
+                            for dir_name in dirs:
+                                if dir_name == "__pycache__":
+                                    full_path = os.path.join(root, dir_name)
+                                    shutil.rmtree(full_path, ignore_errors=True)
+                    else:
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+                    print(f"   ✅ Directory {temp_dir} pulita")
+                except Exception as e:
+                    print(f"   ⚠️  Impossibile pulire {temp_dir}: {e}")
+        
+        # Pulisci file temporanei
+        temp_files = ["temp_network.html", "*.tmp", "*.log"]
+        for pattern in temp_files:
+            if "*" in pattern:
+                import glob
+                for file_path in glob.glob(pattern):
+                    try:
+                        os.remove(file_path)
+                        print(f"   ✅ File {file_path} rimosso")
+                    except Exception:
+                        pass
+            else:
+                if os.path.exists(pattern):
+                    try:
+                        os.remove(pattern)
+                        print(f"   ✅ File {pattern} rimosso")
+                    except Exception:
+                        pass
+    
+    def optimize_system(self):
+        """Ottimizza il sistema prima dell'audit"""
+        print("⚡ Ottimizzazione sistema...")
+        
+        # Crea directory se non esistono
+        directories = ["data", "reports", "config", "utils", "audit", "dashboard", ".cache"]
+        for directory in directories:
+            os.makedirs(directory, exist_ok=True)
+        
+        # Verifica configurazione AWS
+        try:
+            import boto3
+            session = boto3.Session(profile_name=self.config.profile)
+            sts = session.client('sts')
+            identity = sts.get_caller_identity()
+            print(f"   ✅ AWS Identity: {identity.get('Arn', 'Unknown')}")
+        except Exception as e:
+            print(f"   ❌ AWS Configuration Error: {e}")
+            print("   💡 Suggerimento: eseguire 'aws configure' per configurare le credenziali")
+            return False
+        
+        # Verifica regioni
+        if not self.config.regions:
+            print("   ❌ Nessuna regione configurata")
+            return False
+        
+        print(f"   ✅ Regioni configurate: {', '.join(self.config.regions)}")
+        
+        # Verifica servizi abilitati
+        active_services = self.config.get_active_services()
+        if not active_services:
+            print("   ❌ Nessun servizio abilitato")
+            return False
+        
+        print(f"   ✅ Servizi abilitati: {', '.join(active_services)}")
+        
+        return True
+    
+    async def run_full_audit(self, use_cache: bool = True, force_cleanup: bool = True) -> dict:
+        """Esegue audit completo: cleanup + fetch + analyze + report"""
+        print("🚀 Avvio AWS Security Audit Completo...")
         start_time = time.time()
         
         try:
-            # 1. Fetch dei dati
-            if use_cache:
-                print("💾 Controllo cache...")
-                # TODO: Implementare logica cache più sofisticata
+            # 0. Pulizia e ottimizzazione
+            if force_cleanup:
+                self.cleanup_old_data()
             
-            print("📡 Fetching risorse AWS...")
+            if not self.optimize_system():
+                return {
+                    "success": False,
+                    "error": "System optimization failed",
+                    "execution_time": time.time() - start_time
+                }
+            
+            # 1. Fetch dei dati
+            print("\n📡 FASE 1: Fetching risorse AWS...")
             fetch_start = time.time()
             await self.fetcher.fetch_all_resources()
             fetch_time = time.time() - fetch_start
             print(f"   ✅ Fetch completato in {fetch_time:.2f}s")
             
             # 2. Process dei dati
-            print("📊 Processing dati...")
+            print("\n📊 FASE 2: Processing dati...")
             process_start = time.time()
-            self.processor.process_all_data()
+            if not self.processor.process_all_data():
+                print("   ⚠️  Processing completato con errori")
             process_time = time.time() - process_start
             print(f"   ✅ Processing completato in {process_time:.2f}s")
             
             # 3. Esegui audit di sicurezza
-            print("🔍 Esecuzione audit di sicurezza...")
+            print("\n🔍 FASE 3: Audit di sicurezza...")
             audit_start = time.time()
             all_findings = []
             
             for region, engine in self.audit_engines.items():
                 print(f"   🌍 Audit regione {region}...")
-                findings = engine.run_all_audits()
-                all_findings.extend(findings)
+                try:
+                    findings = engine.run_all_audits()
+                    all_findings.extend(findings)
+                except Exception as e:
+                    print(f"   ❌ Errore audit {region}: {e}")
+                    continue
             
             audit_time = time.time() - audit_start
             print(f"   ✅ Audit completato in {audit_time:.2f}s")
@@ -80,37 +176,79 @@ class AWSAuditor:
             summary = self._generate_global_summary(all_findings)
             total_time = time.time() - start_time
             
+            # 5. Report finale
             print(f"\n🎯 AUDIT SUMMARY")
-            print(f"   Total Time: {total_time:.2f}s")
-            print(f"   Total Findings: {len(all_findings)}")
-            print(f"   Critical: {summary['critical']} | High: {summary['high']} | Medium: {summary['medium']} | Low: {summary['low']}")
+            print("=" * 50)
+            print(f"   ⏱️  Total Time: {total_time:.2f}s")
+            print(f"   📊 Total Findings: {len(all_findings)}")
+            print(f"   🔴 Critical: {summary['critical']}")
+            print(f"   🟠 High: {summary['high']}")
+            print(f"   🟡 Medium: {summary['medium']}")
+            print(f"   🔵 Low: {summary['low']}")
+            print("=" * 50)
             
-            # 5. Avvisi per findings critici
+            # 6. Avvisi per findings critici
             critical_findings = [f for f in all_findings if f.severity == Severity.CRITICAL]
-            if critical_findings:
-                print(f"\n🚨 ATTENZIONE: {len(critical_findings)} FINDING CRITICI TROVATI!")
-                for finding in critical_findings[:5]:  # Mostra solo i primi 5
-                    print(f"   • {finding.resource_name}: {finding.rule_name}")
-                if len(critical_findings) > 5:
-                    print(f"   • ... e altri {len(critical_findings) - 5} findings critici")
+            high_findings = [f for f in all_findings if f.severity == Severity.HIGH]
+            
+            if critical_findings or high_findings:
+                print(f"\n🚨 FINDINGS PRIORITARI:")
+                
+                if critical_findings:
+                    print(f"\n🔴 CRITICAL ({len(critical_findings)}):")
+                    for i, finding in enumerate(critical_findings[:3], 1):
+                        print(f"   {i}. {finding.resource_name}: {finding.rule_name}")
+                    if len(critical_findings) > 3:
+                        print(f"   ... e altri {len(critical_findings) - 3} critical findings")
+                
+                if high_findings:
+                    print(f"\n🟠 HIGH ({len(high_findings)}):")
+                    for i, finding in enumerate(high_findings[:2], 1):
+                        print(f"   {i}. {finding.resource_name}: {finding.rule_name}")
+                    if len(high_findings) > 2:
+                        print(f"   ... e altri {len(high_findings) - 2} high findings")
+                        
+                print(f"\n📋 Per dettagli completi: controlla reports/security_audit_report.md")
+            else:
+                print(f"\n✅ Nessun finding critico o high priority trovato!")
+            
+            # 7. Suggerimenti prossimi passi
+            print(f"\n💡 PROSSIMI PASSI:")
+            print(f"   📊 Dashboard: python main.py --dashboard")
+            print(f"   🔍 Re-audit: python main.py --audit-only")
+            print(f"   📁 Reports: controlla la directory /reports")
             
             return {
                 "success": True,
                 "total_findings": len(all_findings),
                 "summary": summary,
                 "critical_findings": len(critical_findings),
+                "high_findings": len(high_findings),
                 "execution_time": total_time,
-                "regions_audited": list(self.audit_engines.keys())
+                "regions_audited": list(self.audit_engines.keys()),
+                "phases": {
+                    "fetch_time": fetch_time,
+                    "process_time": process_time,
+                    "audit_time": audit_time
+                }
             }
             
+        except KeyboardInterrupt:
+            print("\n🛑 Audit interrotto dall'utente")
+            return {
+                "success": False,
+                "error": "User interrupted",
+                "execution_time": time.time() - start_time
+            }
         except Exception as e:
-            print(f"❌ Errore durante l'audit: {e}")
+            print(f"\n❌ Errore durante l'audit: {e}")
             import traceback
             traceback.print_exc()
             return {
                 "success": False,
                 "error": str(e),
-                "execution_time": time.time() - start_time
+                "execution_time": time.time() - start_time,
+                "traceback": traceback.format_exc()
             }
     
     def _generate_global_summary(self, findings: List) -> dict:
@@ -118,16 +256,31 @@ class AWSAuditor:
         summary = {"critical": 0, "high": 0, "medium": 0, "low": 0}
         
         for finding in findings:
-            summary[finding.severity.value] += 1
+            severity_key = finding.severity.value if hasattr(finding.severity, 'value') else str(finding.severity)
+            if severity_key in summary:
+                summary[severity_key] += 1
         
         return summary
     
-    async def run_fetch_only(self) -> dict:
+    async def run_fetch_only(self, force_cleanup: bool = False) -> dict:
         """Esegue solo il fetch dei dati senza audit"""
         print("📡 Fetching dati AWS...")
         start_time = time.time()
         
         try:
+            # Pulizia opzionale
+            if force_cleanup:
+                self.cleanup_old_data()
+            
+            # Verifica sistema
+            if not self.optimize_system():
+                return {
+                    "success": False,
+                    "error": "System check failed",
+                    "execution_time": time.time() - start_time
+                }
+            
+            # Fetch
             await self.fetcher.fetch_all_resources()
             
             # Process dei dati anche nel fetch-only
@@ -152,12 +305,16 @@ class AWSAuditor:
                 "execution_time": time.time() - start_time
             }
     
-    def run_audit_only(self) -> dict:
+    def run_audit_only(self, force_cleanup: bool = False) -> dict:
         """Esegue solo l'audit sui dati esistenti"""
         print("🔍 Esecuzione audit sui dati esistenti...")
         start_time = time.time()
         
         try:
+            # Pulizia opzionale
+            if force_cleanup:
+                self.cleanup_old_data()
+            
             # Verifica che esistano dati da auditare
             data_dir = Path("data")
             if not data_dir.exists() or not any(data_dir.glob("*.json")):
@@ -176,8 +333,12 @@ class AWSAuditor:
             
             for region, engine in self.audit_engines.items():
                 print(f"   🌍 Audit regione {region}...")
-                findings = engine.run_all_audits()
-                all_findings.extend(findings)
+                try:
+                    findings = engine.run_all_audits()
+                    all_findings.extend(findings)
+                except Exception as e:
+                    print(f"   ❌ Errore audit {region}: {e}")
+                    continue
             
             summary = self._generate_global_summary(all_findings)
             execution_time = time.time() - start_time
@@ -294,17 +455,19 @@ class AWSAuditor:
 def main():
     """Funzione principale con CLI"""
     parser = argparse.ArgumentParser(
-        description="🔍 AWS Infrastructure Security Auditor",
+        description="🔍 AWS Infrastructure Security Auditor v2.1",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Esempi di utilizzo:
-  python main.py                          # Audit completo
-  python main.py --fetch-only             # Solo fetch dati
+  python main.py                          # Audit completo con pulizia automatica
+  python main.py --fetch-only             # Solo fetch dati (con pulizia)
   python main.py --audit-only             # Solo audit su dati esistenti
   python main.py --dashboard              # Avvia dashboard (localhost)
   python main.py --dashboard --host 0.0.0.0  # Dashboard accessibile da rete
   python main.py --config custom.json    # Usa configurazione custom
   python main.py --regions us-east-1,eu-west-1  # Specifica regioni
+  python main.py --no-cleanup            # Disabilita pulizia automatica
+  python main.py --quick                 # Audit veloce (no fetch, no cleanup)
         """
     )
     
@@ -325,6 +488,11 @@ Esempi di utilizzo:
         action="store_true", 
         help="Avvia il dashboard Streamlit"
     )
+    group.add_argument(
+        "--quick",
+        action="store_true",
+        help="Audit veloce: solo audit sui dati esistenti senza pulizia"
+    )
     
     # Opzioni di configurazione
     parser.add_argument(
@@ -341,6 +509,11 @@ Esempi di utilizzo:
         "--no-cache",
         action="store_true",
         help="Disabilita uso della cache"
+    )
+    parser.add_argument(
+        "--no-cleanup",
+        action="store_true",
+        help="Disabilita pulizia automatica"
     )
     parser.add_argument(
         "--services",
@@ -364,6 +537,11 @@ Esempi di utilizzo:
         default="localhost",
         help="Host per il dashboard (default: localhost, usa 0.0.0.0 per accesso rete)"
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Forza l'esecuzione anche in caso di warning"
+    )
     
     args = parser.parse_args()
     
@@ -378,7 +556,7 @@ Esempi di utilizzo:
         
         # Override configurazione da CLI
         if args.regions:
-            auditor.config.regions = args.regions.split(",")
+            auditor.config.regions = [r.strip() for r in args.regions.split(",")]
             print(f"🌍 Regioni specificate: {auditor.config.regions}")
         
         if args.services:
@@ -393,19 +571,26 @@ Esempi di utilizzo:
                 else:
                     print(f"⚠️  Servizio sconosciuto: {service}")
         
+        # Determina se fare cleanup
+        force_cleanup = not args.no_cleanup
+        
         # Esegui operazione richiesta
         if args.dashboard:
             auditor.start_dashboard(host=args.host)
         elif args.fetch_only:
-            result = asyncio.run(auditor.run_fetch_only())
+            result = asyncio.run(auditor.run_fetch_only(force_cleanup=force_cleanup))
             sys.exit(0 if result["success"] else 1)
         elif args.audit_only:
-            result = auditor.run_audit_only()
+            result = auditor.run_audit_only(force_cleanup=force_cleanup)
+            sys.exit(0 if result["success"] else 1)
+        elif args.quick:
+            # Audit veloce: no fetch, no cleanup
+            result = auditor.run_audit_only(force_cleanup=False)
             sys.exit(0 if result["success"] else 1)
         else:
             # Audit completo (default)
             use_cache = not args.no_cache
-            result = asyncio.run(auditor.run_full_audit(use_cache))
+            result = asyncio.run(auditor.run_full_audit(use_cache, force_cleanup))
             
             # Exit code basato sui risultati
             if not result["success"]:
