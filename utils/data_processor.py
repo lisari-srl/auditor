@@ -180,6 +180,225 @@ class DataProcessor:
             audit_data = {
                 "metadata": {
                     "processed_at": datetime.now().isoformat(),
+                    "total_instances": total_processed,
+                    "total_reservations": len(raw_data.get("Reservations", []))
+                },
+                "active": active_instances,
+                "stopped": stopped_instances,
+                "terminated": terminated_instances,
+                "summary": {
+                    "running": len(active_instances),
+                    "stopped": len(stopped_instances),
+                    "terminated": len(terminated_instances)
+                }
+            }
+            
+            if self._save_json("ec2_audit.json", audit_data):
+                print(f"      ✅ {len(active_instances)} running, {len(stopped_instances)} stopped, {len(terminated_instances)} terminated")
+                return True
+            return False
+            
+        except Exception as e:
+            error_msg = f"EC2 processing failed: {e}"
+            print(f"   ❌ {error_msg}")
+            self.errors.append(error_msg)
+            return False
+    
+    def _process_sg_data(self) -> bool:
+        """Elabora dati Security Groups per audit"""
+        print("   🛡️  Processing Security Groups...")
+        
+        try:
+            sg_data = self._load_json("sg_raw.json")
+            eni_data = self._load_json("eni_raw.json")
+            
+            if not sg_data:
+                return False
+            
+            # Analizza SG aperti e usage
+            open_ingress = []
+            open_egress = []
+            unused_sgs = []
+            critical_ports = []
+            
+            # Mappa ENI per trovare SG utilizzati
+            used_sg_ids = set()
+            if eni_data:
+                for eni in eni_data.get("NetworkInterfaces", []):
+                    for group in eni.get("Groups", []):
+                        sg_id = group.get("GroupId")
+                        if sg_id:
+                            used_sg_ids.add(sg_id)
+            
+            total_sgs = 0
+            for sg in sg_data.get("SecurityGroups", []):
+                try:
+                    sg_id = sg.get("GroupId")
+                    sg_name = sg.get("GroupName", sg_id)
+                    
+                    if not sg_id:
+                        continue
+                    
+                    total_sgs += 1
+                    
+                    # Check ingress rules aperti
+                    for rule in sg.get("IpPermissions", []):
+                        for ip_range in rule.get("IpRanges", []):
+                            if ip_range.get("CidrIp") == "0.0.0.0/0":
+                                rule_data = {
+                                    "GroupId": sg_id,
+                                    "GroupName": sg_name,
+                                    "Protocol": rule.get("IpProtocol"),
+                                    "FromPort": rule.get("FromPort"),
+                                    "ToPort": rule.get("ToPort"),
+                                    "CidrIp": ip_range.get("CidrIp"),
+                                    "Description": ip_range.get("Description", "")
+                                }
+                                open_ingress.append(rule_data)
+                                
+                                # Check porte critiche
+                                from_port = rule.get("FromPort", -1)
+                                to_port = rule.get("ToPort", -1)
+                                critical_port_list = [22, 3389, 1433, 3306, 5432, 21, 23, 143, 993, 995]
+                                
+                                for crit_port in critical_port_list:
+                                    if (from_port == -1 or from_port <= crit_port <= to_port or from_port == crit_port):
+                                        critical_ports.append({
+                                            **rule_data,
+                                            "CriticalPort": crit_port,
+                                            "PortName": self._get_port_name(crit_port)
+                                        })
+                    
+                    # Check egress rules aperti
+                    for rule in sg.get("IpPermissionsEgress", []):
+                        for ip_range in rule.get("IpRanges", []):
+                            if ip_range.get("CidrIp") == "0.0.0.0/0":
+                                open_egress.append({
+                                    "GroupId": sg_id,
+                                    "GroupName": sg_name,
+                                    "Protocol": rule.get("IpProtocol"),
+                                    "FromPort": rule.get("FromPort"),
+                                    "ToPort": rule.get("ToPort"),
+                                    "CidrIp": ip_range.get("CidrIp"),
+                                    "Description": ip_range.get("Description", "")
+                                })
+                    
+                    # Check SG non utilizzati (skip default)
+                    if sg_name != "default" and sg_id not in used_sg_ids:
+                        unused_sgs.append({
+                            "GroupId": sg_id,
+                            "GroupName": sg_name,
+                            "VpcId": sg.get("VpcId"),
+                            "Description": sg.get("Description", ""),
+                            "IngressRules": len(sg.get("IpPermissions", [])),
+                            "EgressRules": len(sg.get("IpPermissionsEgress", []))
+                        })
+                        
+                except Exception as e:
+                    self.errors.append(f"SG processing error for {sg.get('GroupId', 'unknown')}: {e}")
+                    continue
+            
+            audit_data = {
+                "metadata": {
+                    "processed_at": datetime.now().isoformat(),
+                    "total_security_groups": total_sgs,
+                    "used_security_groups": len(used_sg_ids)
+                },
+                "open_ingress": open_ingress,
+                "open_egress": open_egress,
+                "unused": unused_sgs,
+                "critical_ports": critical_ports,
+                "summary": {
+                    "total_open_ingress": len(open_ingress),
+                    "total_open_egress": len(open_egress),
+                    "total_unused": len(unused_sgs),
+                    "total_critical_ports": len(critical_ports)
+                }
+            }
+            
+            if self._save_json("sg_audit.json", audit_data):
+                print(f"      ✅ {len(open_ingress)} open ingress, {len(unused_sgs)} unused, {len(critical_ports)} critical ports")
+                return True
+            return False
+            
+        except Exception as e:
+            error_msg = f"SG processing failed: {e}"
+            print(f"   ❌ {error_msg}")
+            self.errors.append(error_msg)
+            return False
+    
+    def _process_s3_data(self) -> bool:
+        """Elabora dati S3 per audit"""
+        print("   🗂️  Processing S3 buckets...")
+        
+        try:
+            s3_data = self._load_json("s3_raw.json")
+            
+            if not s3_data:
+                return False
+            
+            if not isinstance(s3_data, list):
+                print("      ⚠️  S3 data format unexpected, skipping")
+                return False
+            
+            public_buckets = []
+            unencrypted_buckets = []
+            old_buckets = []
+            
+            current_date = datetime.now()
+            
+            for bucket in s3_data:
+                try:
+                    bucket_name = bucket.get("Name")
+                    if not bucket_name:
+                        continue
+                    
+                    # Check public access
+                    if bucket.get("PublicAccess", False):
+                        public_buckets.append({
+                            "Name": bucket_name,
+                            "CreationDate": bucket.get("CreationDate"),
+                            "Region": bucket.get("ActualRegion", "unknown"),
+                            "Reason": "Public ACL or Policy"
+                        })
+                    
+                    # Check creation date per bucket vecchi
+                    creation_date_str = bucket.get("CreationDate")
+                    if creation_date_str:
+                        try:
+                            if "T" in creation_date_str:
+                                creation_date = datetime.fromisoformat(creation_date_str.replace('Z', '+00:00'))
+                            else:
+                                creation_date = datetime.strptime(creation_date_str[:10], "%Y-%m-%d")
+                            
+                            days_old = (current_date - creation_date.replace(tzinfo=None)).days
+                            if days_old > 365:  # Più di un anno
+                                old_buckets.append({
+                                    "Name": bucket_name,
+                                    "CreationDate": creation_date_str,
+                                    "DaysOld": days_old,
+                                    "Region": bucket.get("ActualRegion", "unknown")
+                                })
+                        except Exception:
+                            pass
+                    
+                    # Per encryption, dovremmo fare chiamate aggiuntive
+                    # Per ora marchiamo come "unknown" se non abbiamo info
+                    if not bucket.get("Encryption"):
+                        unencrypted_buckets.append({
+                            "Name": bucket_name,
+                            "CreationDate": creation_date_str,
+                            "Region": bucket.get("ActualRegion", "unknown"),
+                            "Reason": "Encryption status unknown"
+                        })
+                        
+                except Exception as e:
+                    self.errors.append(f"S3 bucket processing error for {bucket.get('Name', 'unknown')}: {e}")
+                    continue
+            
+            audit_data = {
+                "metadata": {
+                    "processed_at": datetime.now().isoformat(),
                     "total_buckets": len(s3_data)
                 },
                 "public_buckets": public_buckets,
@@ -574,223 +793,4 @@ class DataProcessor:
             "errors": self.errors,
             "success": len(self.processed_files) > 0,
             "error_count": len(self.errors)
-        }now().isoformat(),
-                    "total_instances": total_processed,
-                    "total_reservations": len(raw_data.get("Reservations", []))
-                },
-                "active": active_instances,
-                "stopped": stopped_instances,
-                "terminated": terminated_instances,
-                "summary": {
-                    "running": len(active_instances),
-                    "stopped": len(stopped_instances),
-                    "terminated": len(terminated_instances)
-                }
-            }
-            
-            if self._save_json("ec2_audit.json", audit_data):
-                print(f"      ✅ {len(active_instances)} running, {len(stopped_instances)} stopped, {len(terminated_instances)} terminated")
-                return True
-            return False
-            
-        except Exception as e:
-            error_msg = f"EC2 processing failed: {e}"
-            print(f"   ❌ {error_msg}")
-            self.errors.append(error_msg)
-            return False
-    
-    def _process_sg_data(self) -> bool:
-        """Elabora dati Security Groups per audit"""
-        print("   🛡️  Processing Security Groups...")
-        
-        try:
-            sg_data = self._load_json("sg_raw.json")
-            eni_data = self._load_json("eni_raw.json")
-            
-            if not sg_data:
-                return False
-            
-            # Analizza SG aperti e usage
-            open_ingress = []
-            open_egress = []
-            unused_sgs = []
-            critical_ports = []
-            
-            # Mappa ENI per trovare SG utilizzati
-            used_sg_ids = set()
-            if eni_data:
-                for eni in eni_data.get("NetworkInterfaces", []):
-                    for group in eni.get("Groups", []):
-                        sg_id = group.get("GroupId")
-                        if sg_id:
-                            used_sg_ids.add(sg_id)
-            
-            total_sgs = 0
-            for sg in sg_data.get("SecurityGroups", []):
-                try:
-                    sg_id = sg.get("GroupId")
-                    sg_name = sg.get("GroupName", sg_id)
-                    
-                    if not sg_id:
-                        continue
-                    
-                    total_sgs += 1
-                    
-                    # Check ingress rules aperti
-                    for rule in sg.get("IpPermissions", []):
-                        for ip_range in rule.get("IpRanges", []):
-                            if ip_range.get("CidrIp") == "0.0.0.0/0":
-                                rule_data = {
-                                    "GroupId": sg_id,
-                                    "GroupName": sg_name,
-                                    "Protocol": rule.get("IpProtocol"),
-                                    "FromPort": rule.get("FromPort"),
-                                    "ToPort": rule.get("ToPort"),
-                                    "CidrIp": ip_range.get("CidrIp"),
-                                    "Description": ip_range.get("Description", "")
-                                }
-                                open_ingress.append(rule_data)
-                                
-                                # Check porte critiche
-                                from_port = rule.get("FromPort", -1)
-                                to_port = rule.get("ToPort", -1)
-                                critical_port_list = [22, 3389, 1433, 3306, 5432, 21, 23, 143, 993, 995]
-                                
-                                for crit_port in critical_port_list:
-                                    if (from_port == -1 or from_port <= crit_port <= to_port or from_port == crit_port):
-                                        critical_ports.append({
-                                            **rule_data,
-                                            "CriticalPort": crit_port,
-                                            "PortName": self._get_port_name(crit_port)
-                                        })
-                    
-                    # Check egress rules aperti
-                    for rule in sg.get("IpPermissionsEgress", []):
-                        for ip_range in rule.get("IpRanges", []):
-                            if ip_range.get("CidrIp") == "0.0.0.0/0":
-                                open_egress.append({
-                                    "GroupId": sg_id,
-                                    "GroupName": sg_name,
-                                    "Protocol": rule.get("IpProtocol"),
-                                    "FromPort": rule.get("FromPort"),
-                                    "ToPort": rule.get("ToPort"),
-                                    "CidrIp": ip_range.get("CidrIp"),
-                                    "Description": ip_range.get("Description", "")
-                                })
-                    
-                    # Check SG non utilizzati (skip default)
-                    if sg_name != "default" and sg_id not in used_sg_ids:
-                        unused_sgs.append({
-                            "GroupId": sg_id,
-                            "GroupName": sg_name,
-                            "VpcId": sg.get("VpcId"),
-                            "Description": sg.get("Description", ""),
-                            "IngressRules": len(sg.get("IpPermissions", [])),
-                            "EgressRules": len(sg.get("IpPermissionsEgress", []))
-                        })
-                        
-                except Exception as e:
-                    self.errors.append(f"SG processing error for {sg.get('GroupId', 'unknown')}: {e}")
-                    continue
-            
-            audit_data = {
-                "metadata": {
-                    "processed_at": datetime.now().isoformat(),
-                    "total_security_groups": total_sgs,
-                    "used_security_groups": len(used_sg_ids)
-                },
-                "open_ingress": open_ingress,
-                "open_egress": open_egress,
-                "unused": unused_sgs,
-                "critical_ports": critical_ports,
-                "summary": {
-                    "total_open_ingress": len(open_ingress),
-                    "total_open_egress": len(open_egress),
-                    "total_unused": len(unused_sgs),
-                    "total_critical_ports": len(critical_ports)
-                }
-            }
-            
-            if self._save_json("sg_audit.json", audit_data):
-                print(f"      ✅ {len(open_ingress)} open ingress, {len(unused_sgs)} unused, {len(critical_ports)} critical ports")
-                return True
-            return False
-            
-        except Exception as e:
-            error_msg = f"SG processing failed: {e}"
-            print(f"   ❌ {error_msg}")
-            self.errors.append(error_msg)
-            return False
-    
-    def _process_s3_data(self) -> bool:
-        """Elabora dati S3 per audit"""
-        print("   🗂️  Processing S3 buckets...")
-        
-        try:
-            s3_data = self._load_json("s3_raw.json")
-            
-            if not s3_data:
-                return False
-            
-            if not isinstance(s3_data, list):
-                print("      ⚠️  S3 data format unexpected, skipping")
-                return False
-            
-            public_buckets = []
-            unencrypted_buckets = []
-            old_buckets = []
-            
-            current_date = datetime.now()
-            
-            for bucket in s3_data:
-                try:
-                    bucket_name = bucket.get("Name")
-                    if not bucket_name:
-                        continue
-                    
-                    # Check public access
-                    if bucket.get("PublicAccess", False):
-                        public_buckets.append({
-                            "Name": bucket_name,
-                            "CreationDate": bucket.get("CreationDate"),
-                            "Region": bucket.get("ActualRegion", "unknown"),
-                            "Reason": "Public ACL or Policy"
-                        })
-                    
-                    # Check creation date per bucket vecchi
-                    creation_date_str = bucket.get("CreationDate")
-                    if creation_date_str:
-                        try:
-                            if "T" in creation_date_str:
-                                creation_date = datetime.fromisoformat(creation_date_str.replace('Z', '+00:00'))
-                            else:
-                                creation_date = datetime.strptime(creation_date_str[:10], "%Y-%m-%d")
-                            
-                            days_old = (current_date - creation_date.replace(tzinfo=None)).days
-                            if days_old > 365:  # Più di un anno
-                                old_buckets.append({
-                                    "Name": bucket_name,
-                                    "CreationDate": creation_date_str,
-                                    "DaysOld": days_old,
-                                    "Region": bucket.get("ActualRegion", "unknown")
-                                })
-                        except Exception:
-                            pass
-                    
-                    # Per encryption, dovremmo fare chiamate aggiuntive
-                    # Per ora marchiamo come "unknown" se non abbiamo info
-                    if not bucket.get("Encryption"):
-                        unencrypted_buckets.append({
-                            "Name": bucket_name,
-                            "CreationDate": creation_date_str,
-                            "Region": bucket.get("ActualRegion", "unknown"),
-                            "Reason": "Encryption status unknown"
-                        })
-                        
-                except Exception as e:
-                    self.errors.append(f"S3 bucket processing error for {bucket.get('Name', 'unknown')}: {e}")
-                    continue
-            
-            audit_data = {
-                "metadata": {
-                    "processed_at": datetime.
+        }
