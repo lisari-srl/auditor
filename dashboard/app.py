@@ -54,10 +54,6 @@ st.markdown("""
         border-left: 4px solid #ff9800;
         margin: 0.5rem 0;
     }
-    .finding-title {
-        font-weight: bold;
-        margin-bottom: 0.5rem;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -458,32 +454,31 @@ class SecurityDashboard:
             st.error(f"Errore caricamento dati IAM: {e}")
     
     def render_network_map(self):
-        """Render mappa di rete interattiva con fallback"""
+        """Render mappa di rete con fallback sicuro"""
         st.subheader("🌐 Network Topology")
         
-        # Try to import and use pyvis
+        # Check if pyvis is available
         try:
+            from pyvis.network import Network
             import networkx as nx
             import streamlit.components.v1 as components
-            
-            # Try to import pyvis with fallback
-            try:
-                from pyvis.network import Network
-                pyvis_available = True
-            except ImportError:
-                pyvis_available = False
-                st.warning("⚠️ PyVis non disponibile. Installare con: `pip install pyvis`")
-            
-            if not pyvis_available:
-                self.render_network_table()
-                return
-            
+            pyvis_available = True
+        except ImportError:
+            pyvis_available = False
+        
+        if not pyvis_available:
+            st.warning("⚠️ PyVis non disponibile. Installare con: `pip install pyvis networkx`")
+            self.render_network_table()
+            return
+        
+        try:
             # Load data for network map
             ec2_data = self.load_json("ec2_audit.json")
             sg_data = self.load_json("sg_raw.json")
             
             if not ec2_data or not sg_data:
                 st.info("ℹ️ Dati insufficienti per generare mappa di rete")
+                self.render_network_table()
                 return
             
             # Create network graph
@@ -509,7 +504,8 @@ class SecurityDashboard:
                 
                 # Connect to security groups
                 for sg_id in instance.get("SecurityGroups", []):
-                    G.add_edge(instance_id, sg_id, label="uses")
+                    if sg_id:  # Only add if sg_id is not None
+                        G.add_edge(instance_id, sg_id, label="uses")
             
             # Add Security Groups
             for sg in sg_data.get("SecurityGroups", []):
@@ -534,33 +530,36 @@ class SecurityDashboard:
                     title=f"Security Group<br>Ingress: {len(sg.get('IpPermissions', []))}<br>Egress: {len(sg.get('IpPermissionsEgress', []))}"
                 )
             
-            # Create PyVis network
-            net = Network(height="600px", width="100%", bgcolor="#f8f9fa")
-            net.from_nx(G)
-            net.repulsion(node_distance=200, central_gravity=0.3, spring_length=200)
-            net.set_options("""
-            var options = {
-              "physics": {
-                "enabled": true,
-                "stabilization": {"iterations": 100}
-              }
-            }
-            """)
+            # Only create network if we have nodes
+            if len(G.nodes()) > 0:
+                # Create PyVis network
+                net = Network(height="600px", width="100%", bgcolor="#f8f9fa")
+                net.from_nx(G)
+                net.repulsion(node_distance=200, central_gravity=0.3, spring_length=200)
+                net.set_options("""
+                var options = {
+                  "physics": {
+                    "enabled": true,
+                    "stabilization": {"iterations": 100}
+                  }
+                }
+                """)
+                
+                # Generate and display
+                temp_file = "temp_network.html"
+                net.save_graph(temp_file)
+                
+                with open(temp_file, "r", encoding="utf-8") as f:
+                    html = f.read()
+                components.html(html, height=650)
+                
+                # Cleanup
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+            else:
+                st.info("ℹ️ Nessun nodo da visualizzare nella mappa di rete")
+                self.render_network_table()
             
-            # Generate and display
-            temp_file = "temp_network.html"
-            net.save_graph(temp_file)
-            with open(temp_file, "r", encoding="utf-8") as f:
-                html = f.read()
-            components.html(html, height=650)
-            
-            # Cleanup
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
-            
-        except ImportError as e:
-            st.error(f"❌ Librerie per mappa di rete non disponibili: {e}")
-            self.render_network_table()
         except Exception as e:
             st.error(f"❌ Errore generazione mappa: {e}")
             self.render_network_table()
@@ -586,19 +585,20 @@ class SecurityDashboard:
                 state = instance.get("State", "unknown")
                 
                 for sg_id in instance.get("SecurityGroups", []):
-                    # Find SG name
-                    sg_name = sg_id
-                    for sg in sg_data.get("SecurityGroups", []):
-                        if sg.get("GroupId") == sg_id:
-                            sg_name = sg.get("GroupName", sg_id)
-                            break
-                    
-                    connections.append({
-                        "Instance": instance_name,
-                        "State": state,
-                        "Security Group": sg_name,
-                        "SG ID": sg_id
-                    })
+                    if sg_id:  # Only process if sg_id is not None
+                        # Find SG name
+                        sg_name = sg_id
+                        for sg in sg_data.get("SecurityGroups", []):
+                            if sg.get("GroupId") == sg_id:
+                                sg_name = sg.get("GroupName", sg_id)
+                                break
+                        
+                        connections.append({
+                            "Instance": instance_name,
+                            "State": state,
+                            "Security Group": sg_name,
+                            "SG ID": sg_id
+                        })
             
             if connections:
                 df = pd.DataFrame(connections)
@@ -625,8 +625,8 @@ class SecurityDashboard:
             if st.button("📡 Fetch", help="Fetch AWS data"):
                 with st.spinner("Fetching..."):
                     import subprocess
-                    result = subprocess.run(["python", "main.py", "--fetch-only"], 
-                                          capture_output=True, text=True)
+                    result = subprocess.run(["python", "../main.py", "--fetch-only"], 
+                                          capture_output=True, text=True, cwd=Path(__file__).parent.parent)
                     if result.returncode == 0:
                         st.success("✅ Fetch completed")
                         st.rerun()
@@ -637,38 +637,13 @@ class SecurityDashboard:
             if st.button("🔍 Audit", help="Run security audit"):
                 with st.spinner("Auditing..."):
                     import subprocess
-                    result = subprocess.run(["python", "main.py", "--audit-only"], 
-                                          capture_output=True, text=True)
+                    result = subprocess.run(["python", "../main.py", "--audit-only"], 
+                                          capture_output=True, text=True, cwd=Path(__file__).parent.parent)
                     if result.returncode == 0:
                         st.success("✅ Audit completed")
                         st.rerun()
                     else:
                         st.error(f"❌ Audit failed: {result.stderr}")
-        
-        # Configuration
-        st.sidebar.subheader("⚙️ Configuration")
-        
-        # Region selection (read-only display)
-        config_file = Path("config.json")
-        if config_file.exists():
-            try:
-                with open(config_file) as f:
-                    config = json.load(f)
-                regions = config.get("regions", ["us-east-1"])
-                st.sidebar.info(f"📍 Regions: {', '.join(regions)}")
-            except:
-                st.sidebar.info("📍 Regions: us-east-1 (default)")
-        
-        # Cache info
-        cache_dir = Path(".cache")
-        if cache_dir.exists():
-            cache_files = list(cache_dir.glob("*.json"))
-            if cache_files:
-                st.sidebar.info(f"💾 Cache: {len(cache_files)} files")
-                if st.sidebar.button("🗑️ Clear Cache"):
-                    for f in cache_files:
-                        f.unlink()
-                    st.sidebar.success("Cache cleared!")
         
         # Data freshness
         data_files = ["ec2_raw.json", "sg_raw.json", "iam_raw.json"]
@@ -689,95 +664,6 @@ class SecurityDashboard:
             else:
                 st.sidebar.success(f"⏰ Data age: {age.seconds // 60} minutes old")
     
-    def render_raw_data_viewer(self):
-        """Render visualizzatore dati raw (tab nascosto)"""
-        st.subheader("📄 Raw Data Viewer")
-        
-        # File selection
-        available_files = []
-        for file_path in self.data_dir.glob("*.json"):
-            available_files.append(file_path.name)
-        
-        if not available_files:
-            st.info("ℹ️ Nessun file di dati disponibile")
-            return
-        
-        selected_file = st.selectbox("📁 Select file:", available_files)
-        
-        if selected_file:
-            data = self.load_json(selected_file)
-            
-            if data:
-                # Show file info
-                file_path = self.data_dir / selected_file
-                file_stats = file_path.stat()
-                file_size = file_stats.st_size / 1024  # KB
-                file_mtime = datetime.fromtimestamp(file_stats.st_mtime)
-                
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("📊 File Size", f"{file_size:.1f} KB")
-                with col2:
-                    st.metric("🗓️ Modified", file_mtime.strftime("%m/%d %H:%M"))
-                with col3:
-                    if isinstance(data, dict):
-                        st.metric("🔑 Keys", len(data.keys()))
-                    elif isinstance(data, list):
-                        st.metric("📝 Items", len(data))
-                
-                # Display options
-                display_mode = st.radio(
-                    "Display mode:",
-                    ["🌳 Formatted", "📄 Raw JSON"],
-                    horizontal=True
-                )
-                
-                if display_mode == "🌳 Formatted":
-                    # Try to display as DataFrame if possible
-                    if selected_file == "ec2_audit.json" and isinstance(data, dict):
-                        active = data.get("active", [])
-                        stopped = data.get("stopped", [])
-                        
-                        if active:
-                            st.subheader("🟢 Active Instances")
-                            df = pd.DataFrame(active)
-                            st.dataframe(df, use_container_width=True)
-                        
-                        if stopped:
-                            st.subheader("🔴 Stopped Instances")
-                            df = pd.DataFrame(stopped)
-                            st.dataframe(df, use_container_width=True)
-                    
-                    elif selected_file.endswith("_raw.json") and isinstance(data, dict):
-                        # Show main keys
-                        for key, value in data.items():
-                            if key == "ResponseMetadata":
-                                continue
-                            
-                            st.subheader(f"📋 {key}")
-                            if isinstance(value, list) and value:
-                                # Convert to DataFrame if possible
-                                try:
-                                    df = pd.DataFrame(value)
-                                    # Show only first few columns if too many
-                                    if len(df.columns) > 10:
-                                        important_cols = [col for col in df.columns 
-                                                        if any(word in col.lower() 
-                                                        for word in ['id', 'name', 'type', 'state', 'cidr'])]
-                                        if important_cols:
-                                            df = df[important_cols[:10]]
-                                    st.dataframe(df.head(50), use_container_width=True)
-                                except:
-                                    st.json(value[:5] if len(value) > 5 else value)
-                            else:
-                                st.json(value)
-                    else:
-                        st.json(data)
-                
-                else:
-                    # Raw JSON mode
-                    st.json(data)
-    
     def run(self):
         """Esegue il dashboard"""
         try:
@@ -788,12 +674,11 @@ class SecurityDashboard:
             self.render_header()
             
             # Navigation tabs
-            tab1, tab2, tab3, tab4, tab5 = st.tabs([
+            tab1, tab2, tab3, tab4 = st.tabs([
                 "🏠 Overview", 
                 "🚨 Security", 
                 "📦 Resources", 
-                "🌐 Network", 
-                "📄 Raw Data"
+                "🌐 Network"
             ])
             
             with tab1:
@@ -809,9 +694,6 @@ class SecurityDashboard:
             
             with tab4:
                 self.render_network_map()
-            
-            with tab5:
-                self.render_raw_data_viewer()
                 
         except Exception as e:
             st.error(f"❌ Errore dashboard: {e}")
