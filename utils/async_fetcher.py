@@ -265,7 +265,7 @@ class AsyncAWSFetcher:
             print(f"   ❌ IAM error: {e}")
             return {"iam_raw": {"Users": [], "Roles": [], "Policies": []}}
     
-    async def _save_results(self, results: Dict[str, Any]):
+async def _save_results(self, results: Dict[str, Any]):
         """Salva risultati su file con timestamp"""
         os.makedirs("data", exist_ok=True)
         
@@ -274,40 +274,16 @@ class AsyncAWSFetcher:
                 return obj.isoformat()
             raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
         
-        # Salva ogni tipo di dato in un file separato
+        # FIX: Salva ogni tipo di dato sovrascrivendo sempre i file esistenti
+        # per evitare duplicazione dei dati tra fetch successivi
         for data_type, data in results.items():
             filename = f"data/{data_type}.json"
             
-            # Se il file esiste già, decide se mergiare o sovrascrivere
-            existing_data = {}
-            if os.path.exists(filename):
-                try:
-                    with open(filename) as f:
-                        existing_data = json.load(f)
-                except:
-                    existing_data = {}
+            # SOVRASCRIVERE SEMPRE - non fare merge per evitare duplicati
+            final_data = data
             
-            # Merge logic per diversi tipi di dati
-            if data_type.endswith("_raw"):
-                # Per dati raw, sovrascriviamo sempre (sono più recenti)
-                final_data = data
-                
-                # Eccetto per multi-region dove vogliamo appendere
-                if isinstance(data, dict) and isinstance(existing_data, dict):
-                    # Se entrambi hanno struttura simile, mergia
-                    for key, value in data.items():
-                        if key in existing_data and isinstance(value, list) and isinstance(existing_data[key], list):
-                            # Merge liste (per multi-region)
-                            final_data[key] = existing_data[key] + value
-                        else:
-                            final_data[key] = value
-                else:
-                    final_data = data
-            else:
-                final_data = data
-            
-            # Salva i dati
+            # Salva i dati direttamente (sovrascrivendo)
             with open(filename, "w") as f:
                 json.dump(final_data, f, indent=2, default=default_serializer)
                 
-        print(f"💾 Salvati {len(results)} file di dati in /data")
+        print(f"💾 Salvati {len(results)} file di dati in /data (sovrascrivendo precedenti)")

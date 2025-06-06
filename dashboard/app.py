@@ -625,8 +625,11 @@ class SecurityDashboard:
             if st.button("📡 Fetch", help="Fetch AWS data"):
                 with st.spinner("Fetching..."):
                     import subprocess
-                    result = subprocess.run(["python", "../main.py", "--fetch-only"], 
-                                          capture_output=True, text=True, cwd=Path(__file__).parent.parent)
+                    # FIX: Usa il path corretto per main.py
+                    main_path = Path(__file__).parent.parent / "main.py"
+                    result = subprocess.run([
+                        "python", str(main_path), "--fetch-only"
+                    ], capture_output=True, text=True, cwd=main_path.parent)
                     if result.returncode == 0:
                         st.success("✅ Fetch completed")
                         st.rerun()
@@ -637,8 +640,11 @@ class SecurityDashboard:
             if st.button("🔍 Audit", help="Run security audit"):
                 with st.spinner("Auditing..."):
                     import subprocess
-                    result = subprocess.run(["python", "../main.py", "--audit-only"], 
-                                          capture_output=True, text=True, cwd=Path(__file__).parent.parent)
+                    # FIX: Usa il path corretto per main.py
+                    main_path = Path(__file__).parent.parent / "main.py"
+                    result = subprocess.run([
+                        "python", str(main_path), "--audit-only"
+                    ], capture_output=True, text=True, cwd=main_path.parent)
                     if result.returncode == 0:
                         st.success("✅ Audit completed")
                         st.rerun()

@@ -208,7 +208,7 @@ class AWSAuditor:
                 "execution_time": time.time() - start_time
             }
     
-    def start_dashboard(self):
+    def start_dashboard(self, host: str = "localhost"):
         """Avvia il dashboard Streamlit"""
         print("🚀 Avvio dashboard Streamlit...")
         
@@ -228,11 +228,11 @@ class AWSAuditor:
         import subprocess
         import socket
         
-        def is_port_available(port):
+        def is_port_available(port, host="localhost"):
             """Verifica se una porta è disponibile"""
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 try:
-                    s.bind(('localhost', int(port)))
+                    s.bind((host, int(port)))
                     return True
                 except:
                     return False
@@ -242,7 +242,7 @@ class AWSAuditor:
         port = base_port
         
         for i in range(10):  # Prova 10 porte consecutive
-            if is_port_available(port):
+            if is_port_available(port, host):
                 break
             port += 1
         else:
@@ -253,20 +253,40 @@ class AWSAuditor:
             print(f"⚠️  Porta {base_port} occupata, uso porta {port}")
         
         try:
+            # Determina l'indirizzo di binding
+            server_address = host if host != "localhost" else "localhost"
+            
             print(f"🌐 Dashboard disponibile su: http://localhost:{port}")
-            subprocess.run([
-                "streamlit", "run", "dashboard/app.py", 
+            if host != "localhost":
+                print(f"🌐 Accessibile anche da: http://{host}:{port}")
+            
+            # Comando streamlit ottimizzato
+            cmd = [
+                "streamlit", "run", "dashboard/app.py",
                 "--server.port", str(port),
-                "--server.address", "0.0.0.0"
-            ], check=True)
+                "--server.address", server_address,
+                "--server.headless", "true",
+                "--browser.gatherUsageStats", "false"
+            ]
+            
+            # Se è localhost, non specificare --server.enableXsrfProtection
+            if host == "localhost":
+                cmd.extend(["--server.enableXsrfProtection", "false"])
+            
+            subprocess.run(cmd, check=True)
+            
         except subprocess.CalledProcessError as e:
-            if "Port" in str(e) and "already in use" in str(e):
+            error_msg = str(e)
+            if "Port" in error_msg and "already in use" in error_msg:
                 print(f"❌ Porta {port} ancora occupata. Prova manualmente:")
-                print(f"   streamlit run dashboard/app.py --server.port {port + 1}")
+                print(f"   streamlit run dashboard/app.py --server.port {port + 1} --server.address localhost")
             else:
                 print(f"❌ Errore avvio dashboard: {e}")
+                print("\n🔧 Prova manualmente:")
+                print(f"   streamlit run dashboard/app.py --server.port {port} --server.address localhost")
         except FileNotFoundError:
             print("❌ Comando streamlit non trovato nel PATH")
+            print("   Installare con: pip install streamlit")
         except KeyboardInterrupt:
             print("\n🛑 Dashboard fermato dall'utente")
 
@@ -281,7 +301,8 @@ Esempi di utilizzo:
   python main.py                          # Audit completo
   python main.py --fetch-only             # Solo fetch dati
   python main.py --audit-only             # Solo audit su dati esistenti
-  python main.py --dashboard              # Avvia dashboard
+  python main.py --dashboard              # Avvia dashboard (localhost)
+  python main.py --dashboard --host 0.0.0.0  # Dashboard accessibile da rete
   python main.py --config custom.json    # Usa configurazione custom
   python main.py --regions us-east-1,eu-west-1  # Specifica regioni
         """
@@ -337,6 +358,12 @@ Esempi di utilizzo:
         action="store_true",
         help="Output verboso"
     )
+    parser.add_argument(
+        "--host",
+        type=str,
+        default="localhost",
+        help="Host per il dashboard (default: localhost, usa 0.0.0.0 per accesso rete)"
+    )
     
     args = parser.parse_args()
     
@@ -368,7 +395,7 @@ Esempi di utilizzo:
         
         # Esegui operazione richiesta
         if args.dashboard:
-            auditor.start_dashboard()
+            auditor.start_dashboard(host=args.host)
         elif args.fetch_only:
             result = asyncio.run(auditor.run_fetch_only())
             sys.exit(0 if result["success"] else 1)
