@@ -770,12 +770,12 @@
             "Effect": "Allow",
             "Principal": {
               "Service": [
-                "lambda.amazonaws.com",
                 "events.amazonaws.com",
-                "codedeploy.amazonaws.com",
-                "elasticbeanstalk.amazonaws.com",
+                "lambda.amazonaws.com",
                 "codebuild.amazonaws.com",
-                "codepipeline.amazonaws.com"
+                "codepipeline.amazonaws.com",
+                "codedeploy.amazonaws.com",
+                "elasticbeanstalk.amazonaws.com"
               ]
             },
             "Action": "sts:AssumeRole"
