@@ -18,6 +18,7 @@ sys.path.append(str(Path(__file__).parent))
 from config.settings import AWSConfig
 from utils.async_fetcher import AsyncAWSFetcher
 from utils.cache_manager import SmartCache
+from utils.data_processor import DataProcessor
 from audit.audit_engine import AuditEngine
 from config.audit_rules import Severity
 
@@ -31,6 +32,7 @@ class AWSAuditor:
         # Inizializza componenti
         self.fetcher = AsyncAWSFetcher(self.config)
         self.cache = SmartCache(ttl=self.config.cache_ttl)
+        self.processor = DataProcessor()
         self.audit_engines = {}
         
         # Inizializza audit engines per ogni regione
@@ -54,7 +56,14 @@ class AWSAuditor:
             fetch_time = time.time() - fetch_start
             print(f"   ✅ Fetch completato in {fetch_time:.2f}s")
             
-            # 2. Esegui audit di sicurezza
+            # 2. Process dei dati
+            print("📊 Processing dati...")
+            process_start = time.time()
+            self.processor.process_all_data()
+            process_time = time.time() - process_start
+            print(f"   ✅ Processing completato in {process_time:.2f}s")
+            
+            # 3. Esegui audit di sicurezza
             print("🔍 Esecuzione audit di sicurezza...")
             audit_start = time.time()
             all_findings = []
@@ -67,7 +76,7 @@ class AWSAuditor:
             audit_time = time.time() - audit_start
             print(f"   ✅ Audit completato in {audit_time:.2f}s")
             
-            # 3. Genera summary
+            # 4. Genera summary
             summary = self._generate_global_summary(all_findings)
             total_time = time.time() - start_time
             
@@ -76,7 +85,7 @@ class AWSAuditor:
             print(f"   Total Findings: {len(all_findings)}")
             print(f"   Critical: {summary['critical']} | High: {summary['high']} | Medium: {summary['medium']} | Low: {summary['low']}")
             
-            # 4. Avvisi per findings critici
+            # 5. Avvisi per findings critici
             critical_findings = [f for f in all_findings if f.severity == Severity.CRITICAL]
             if critical_findings:
                 print(f"\n🚨 ATTENZIONE: {len(critical_findings)} FINDING CRITICI TROVATI!")
@@ -96,6 +105,8 @@ class AWSAuditor:
             
         except Exception as e:
             print(f"❌ Errore durante l'audit: {e}")
+            import traceback
+            traceback.print_exc()
             return {
                 "success": False,
                 "error": str(e),
@@ -118,9 +129,14 @@ class AWSAuditor:
         
         try:
             await self.fetcher.fetch_all_resources()
+            
+            # Process dei dati anche nel fetch-only
+            print("📊 Processing dati...")
+            self.processor.process_all_data()
+            
             execution_time = time.time() - start_time
             
-            print(f"✅ Fetch completato in {execution_time:.2f}s")
+            print(f"✅ Fetch e processing completati in {execution_time:.2f}s")
             return {
                 "success": True,
                 "execution_time": execution_time,
@@ -128,6 +144,8 @@ class AWSAuditor:
             }
         except Exception as e:
             print(f"❌ Errore durante fetch: {e}")
+            import traceback
+            traceback.print_exc()
             return {
                 "success": False,
                 "error": str(e),
@@ -140,9 +158,24 @@ class AWSAuditor:
         start_time = time.time()
         
         try:
+            # Verifica che esistano dati da auditare
+            data_dir = Path("data")
+            if not data_dir.exists() or not any(data_dir.glob("*.json")):
+                print("❌ Nessun dato trovato in /data. Eseguire prima 'python main.py --fetch-only'")
+                return {
+                    "success": False,
+                    "error": "No data found",
+                    "execution_time": time.time() - start_time
+                }
+            
+            # Process dei dati se necessario
+            print("📊 Verifica processing dati...")
+            self.processor.process_all_data()
+            
             all_findings = []
             
             for region, engine in self.audit_engines.items():
+                print(f"   🌍 Audit regione {region}...")
                 findings = engine.run_all_audits()
                 all_findings.extend(findings)
             
@@ -152,6 +185,13 @@ class AWSAuditor:
             print(f"✅ Audit completato in {execution_time:.2f}s")
             print(f"   Total Findings: {len(all_findings)}")
             
+            # Mostra findings critici
+            critical_findings = [f for f in all_findings if f.severity == Severity.CRITICAL]
+            if critical_findings:
+                print(f"\n🚨 {len(critical_findings)} FINDING CRITICI:")
+                for finding in critical_findings[:3]:
+                    print(f"   • {finding.resource_name}: {finding.rule_name}")
+            
             return {
                 "success": True,
                 "total_findings": len(all_findings),
@@ -160,6 +200,8 @@ class AWSAuditor:
             }
         except Exception as e:
             print(f"❌ Errore durante audit: {e}")
+            import traceback
+            traceback.print_exc()
             return {
                 "success": False,
                 "error": str(e),
@@ -169,14 +211,64 @@ class AWSAuditor:
     def start_dashboard(self):
         """Avvia il dashboard Streamlit"""
         print("🚀 Avvio dashboard Streamlit...")
+        
+        # Verifica che streamlit sia installato
+        try:
+            import streamlit
+        except ImportError:
+            print("❌ Streamlit non trovato. Installare con: pip install streamlit")
+            return
+        
+        # Verifica che esistano dati
+        data_dir = Path("data")
+        if not data_dir.exists() or not any(data_dir.glob("*.json")):
+            print("⚠️  Nessun dato trovato. Il dashboard sarà vuoto.")
+            print("   Suggerimento: eseguire prima 'python main.py --fetch-only'")
+        
         import subprocess
+        import socket
+        
+        def is_port_available(port):
+            """Verifica se una porta è disponibile"""
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                try:
+                    s.bind(('localhost', int(port)))
+                    return True
+                except:
+                    return False
+        
+        # Trova una porta disponibile
+        base_port = int(os.getenv("STREAMLIT_SERVER_PORT", "8501"))
+        port = base_port
+        
+        for i in range(10):  # Prova 10 porte consecutive
+            if is_port_available(port):
+                break
+            port += 1
+        else:
+            print(f"❌ Nessuna porta disponibile da {base_port} a {base_port + 9}")
+            return
+        
+        if port != base_port:
+            print(f"⚠️  Porta {base_port} occupata, uso porta {port}")
         
         try:
-            subprocess.run(["streamlit", "run", "dashboard/app.py"], check=True)
+            print(f"🌐 Dashboard disponibile su: http://localhost:{port}")
+            subprocess.run([
+                "streamlit", "run", "dashboard/app.py", 
+                "--server.port", str(port),
+                "--server.address", "0.0.0.0"
+            ], check=True)
         except subprocess.CalledProcessError as e:
-            print(f"❌ Errore avvio dashboard: {e}")
+            if "Port" in str(e) and "already in use" in str(e):
+                print(f"❌ Porta {port} ancora occupata. Prova manualmente:")
+                print(f"   streamlit run dashboard/app.py --server.port {port + 1}")
+            else:
+                print(f"❌ Errore avvio dashboard: {e}")
         except FileNotFoundError:
-            print("❌ Streamlit non trovato. Installare con: pip install streamlit")
+            print("❌ Comando streamlit non trovato nel PATH")
+        except KeyboardInterrupt:
+            print("\n🛑 Dashboard fermato dall'utente")
 
 
 def main():
@@ -240,47 +332,73 @@ Esempi di utilizzo:
         default="both",
         help="Formato output dei report"
     )
+    parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Output verboso"
+    )
     
     args = parser.parse_args()
     
-    # Crea auditor con configurazione
-    auditor = AWSAuditor(args.config)
+    # Setup logging se verbose
+    if args.verbose:
+        import logging
+        logging.basicConfig(level=logging.DEBUG)
     
-    # Override configurazione da CLI
-    if args.regions:
-        auditor.config.regions = args.regions.split(",")
-    
-    if args.services:
-        # Disabilita tutti i servizi e abilita solo quelli specificati
-        for service in auditor.config.services:
-            auditor.config.services[service] = False
-        for service in args.services.split(","):
-            if service.strip() in auditor.config.services:
-                auditor.config.services[service.strip()] = True
-    
-    # Esegui operazione richiesta
-    if args.dashboard:
-        auditor.start_dashboard()
-    elif args.fetch_only:
-        result = asyncio.run(auditor.run_fetch_only())
-        sys.exit(0 if result["success"] else 1)
-    elif args.audit_only:
-        result = auditor.run_audit_only()
-        sys.exit(0 if result["success"] else 1)
-    else:
-        # Audit completo (default)
-        use_cache = not args.no_cache
-        result = asyncio.run(auditor.run_full_audit(use_cache))
+    try:
+        # Crea auditor con configurazione
+        auditor = AWSAuditor(args.config)
         
-        # Exit code basato sui risultati
-        if not result["success"]:
-            sys.exit(1)
-        elif result.get("critical_findings", 0) > 0:
-            print("\n⚠️  Audit completato con finding critici (exit code 2)")
-            sys.exit(2)
+        # Override configurazione da CLI
+        if args.regions:
+            auditor.config.regions = args.regions.split(",")
+            print(f"🌍 Regioni specificate: {auditor.config.regions}")
+        
+        if args.services:
+            # Disabilita tutti i servizi e abilita solo quelli specificati
+            for service in auditor.config.services:
+                auditor.config.services[service] = False
+            for service in args.services.split(","):
+                service = service.strip()
+                if service in auditor.config.services:
+                    auditor.config.services[service] = True
+                    print(f"✅ Servizio abilitato: {service}")
+                else:
+                    print(f"⚠️  Servizio sconosciuto: {service}")
+        
+        # Esegui operazione richiesta
+        if args.dashboard:
+            auditor.start_dashboard()
+        elif args.fetch_only:
+            result = asyncio.run(auditor.run_fetch_only())
+            sys.exit(0 if result["success"] else 1)
+        elif args.audit_only:
+            result = auditor.run_audit_only()
+            sys.exit(0 if result["success"] else 1)
         else:
-            print("\n✅ Audit completato con successo")
-            sys.exit(0)
+            # Audit completo (default)
+            use_cache = not args.no_cache
+            result = asyncio.run(auditor.run_full_audit(use_cache))
+            
+            # Exit code basato sui risultati
+            if not result["success"]:
+                sys.exit(1)
+            elif result.get("critical_findings", 0) > 0:
+                print("\n⚠️  Audit completato con finding critici (exit code 2)")
+                sys.exit(2)
+            else:
+                print("\n✅ Audit completato con successo")
+                sys.exit(0)
+                
+    except KeyboardInterrupt:
+        print("\n🛑 Operazione interrotta dall'utente")
+        sys.exit(130)
+    except Exception as e:
+        print(f"❌ Errore critico: {e}")
+        if args.verbose:
+            import traceback
+            traceback.print_exc()
+        sys.exit(1)
 
 
 if __name__ == "__main__":

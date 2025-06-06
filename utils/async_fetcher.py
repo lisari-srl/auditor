@@ -38,16 +38,21 @@ class AsyncAWSFetcher:
         if regional_tasks:
             regional_results = await asyncio.gather(*regional_tasks, return_exceptions=True)
             
-            # Combina risultati regionali
+            # Combina risultati regionali - FIX: gestione corretta della struttura dati
             for result in regional_results:
                 if isinstance(result, Exception):
                     print(f"❌ Errore durante fetch: {result}")
                     continue
                 
-                for key, value in result.items():
-                    if key not in all_results:
-                        all_results[key] = {}
-                    all_results[key].update(value)
+                # Ora result è una dict con chiavi region
+                for region_key, region_data in result.items():
+                    if isinstance(region_data, dict):
+                        # Merge dei dati per tipo
+                        for data_type, data_content in region_data.items():
+                            all_results[data_type] = data_content
+                    else:
+                        # Se non è un dict, trattalo come data type diretto
+                        all_results[region_key] = region_data
         
         # Fetch servizi globali (IAM) in modo sincrono
         if self.config.is_service_enabled("iam"):
@@ -65,7 +70,8 @@ class AsyncAWSFetcher:
         """Fetch tutte le risorse EC2 per una regione"""
         print(f"🖥️  Fetching EC2 resources from {region}...")
         
-        results = {f"{region}": {}}
+        # FIX: struttura dati semplificata
+        results = {}
         
         try:
             async with self.session.client('ec2', region_name=region) as ec2:
@@ -95,12 +101,13 @@ class AsyncAWSFetcher:
                     if isinstance(task_result, Exception):
                         print(f"❌ Errore fetch {region}: {task_result}")
                         continue
-                    results[region].update(task_result)
+                    if isinstance(task_result, dict):
+                        results.update(task_result)
                         
         except Exception as e:
             print(f"❌ Errore connessione {region}: {e}")
             
-        return results
+        return {region: results}
     
     async def _fetch_ec2_instances(self, ec2_client, region: str) -> Dict[str, Any]:
         """Fetch istanze EC2"""
@@ -267,43 +274,40 @@ class AsyncAWSFetcher:
                 return obj.isoformat()
             raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
         
-        # Salva risultati aggregati per tipo
-        for region, region_data in results.items():
-            if region == "iam_raw":  # IAM è globale
-                with open("data/iam_raw.json", "w") as f:
-                    json.dump(region_data, f, indent=2, default=default_serializer)
-                continue
+        # Salva ogni tipo di dato in un file separato
+        for data_type, data in results.items():
+            filename = f"data/{data_type}.json"
+            
+            # Se il file esiste già, decide se mergiare o sovrascrivere
+            existing_data = {}
+            if os.path.exists(filename):
+                try:
+                    with open(filename) as f:
+                        existing_data = json.load(f)
+                except:
+                    existing_data = {}
+            
+            # Merge logic per diversi tipi di dati
+            if data_type.endswith("_raw"):
+                # Per dati raw, sovrascriviamo sempre (sono più recenti)
+                final_data = data
                 
-            for data_type, data in region_data.items():
-                filename = f"data/{data_type}.json"
-                
-                # Se il file esiste già, mergia i dati (multi-region)
-                existing_data = {}
-                if os.path.exists(filename):
-                    try:
-                        with open(filename) as f:
-                            existing_data = json.load(f)
-                    except:
-                        existing_data = {}
-                
-                # Merge logic per diversi tipi di dati
+                # Eccetto per multi-region dove vogliamo appendere
                 if isinstance(data, dict) and isinstance(existing_data, dict):
-                    # Per dati strutturati (es. Reservations)
+                    # Se entrambi hanno struttura simile, mergia
                     for key, value in data.items():
-                        if key in existing_data and isinstance(value, list):
-                            existing_data[key].extend(value)
+                        if key in existing_data and isinstance(value, list) and isinstance(existing_data[key], list):
+                            # Merge liste (per multi-region)
+                            final_data[key] = existing_data[key] + value
                         else:
-                            existing_data[key] = value
-                elif isinstance(data, list):
-                    # Per liste dirette (es. S3 buckets)
-                    if isinstance(existing_data, list):
-                        existing_data.extend(data)
-                    else:
-                        existing_data = data
+                            final_data[key] = value
                 else:
-                    existing_data = data
+                    final_data = data
+            else:
+                final_data = data
+            
+            # Salva i dati
+            with open(filename, "w") as f:
+                json.dump(final_data, f, indent=2, default=default_serializer)
                 
-                # Salva i dati mergiati
-                with open(filename, "w") as f:
-                    json.dump(existing_data, f, indent=2, default=default_serializer)
-
+        print(f"💾 Salvati {len(results)} file di dati in /data")
