@@ -1,4 +1,22 @@
-boto3
-streamlit
-pyvis
-networkx
+# Core AWS e async
+boto3>=1.28.0
+aioboto3>=11.3.0
+botocore>=1.31.0
+
+# Dashboard e visualizzazione 
+streamlit>=1.28.0
+plotly>=5.15.0
+pandas>=2.0.0
+pyvis>=0.3.2
+networkx>=3.1
+
+# Utilità
+click>=8.1.0
+rich>=13.5.0
+python-dateutil>=2.8.0
+
+# Development (opzionale)
+pytest>=7.4.0
+black>=23.7.0
+flake8>=6.0.0
+mypy>=1.5.0
