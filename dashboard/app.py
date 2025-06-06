@@ -12,7 +12,16 @@ import sys
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
-from config.audit_rules import Severity
+# Safe imports with fallbacks
+try:
+    from config.audit_rules import Severity
+except ImportError:
+    # Fallback se non riesce a importare
+    class Severity:
+        CRITICAL = "critical"
+        HIGH = "high" 
+        MEDIUM = "medium"
+        LOW = "low"
 
 # Page config
 st.set_page_config(
@@ -283,161 +292,191 @@ class SecurityDashboard:
     
     def render_ec2_inventory(self):
         """Render inventario EC2"""
-        ec2_data = self.load_json("ec2_audit.json")
-        
-        if not ec2_data:
-            st.info("ℹ️ Nessun dato EC2 disponibile")
-            return
-        
-        active_instances = ec2_data.get("active", [])
-        stopped_instances = ec2_data.get("stopped", [])
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.metric("🟢 Running Instances", len(active_instances))
+        try:
+            ec2_data = self.load_json("ec2_audit.json")
             
-            if active_instances:
-                df = pd.DataFrame(active_instances)
-                st.dataframe(
-                    df[["Name", "Type", "PublicIp", "PrivateIp"]].fillna("N/A"),
-                    use_container_width=True
-                )
-        
-        with col2:
-            st.metric("🔴 Stopped Instances", len(stopped_instances))
+            if not ec2_data:
+                st.info("ℹ️ Nessun dato EC2 disponibile")
+                return
             
-            if stopped_instances:
-                df = pd.DataFrame(stopped_instances)
-                st.dataframe(
-                    df[["Name", "Type", "SubnetId"]].fillna("N/A"),
-                    use_container_width=True
-                )
+            active_instances = ec2_data.get("active", [])
+            stopped_instances = ec2_data.get("stopped", [])
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.metric("🟢 Running Instances", len(active_instances))
+                
+                if active_instances:
+                    df = pd.DataFrame(active_instances)
+                    display_cols = ["Name", "Type", "PublicIp", "PrivateIp"]
+                    available_cols = [col for col in display_cols if col in df.columns]
+                    if available_cols:
+                        st.dataframe(
+                            df[available_cols].fillna("N/A"),
+                            use_container_width=True
+                        )
+            
+            with col2:
+                st.metric("🔴 Stopped Instances", len(stopped_instances))
+                
+                if stopped_instances:
+                    df = pd.DataFrame(stopped_instances)
+                    display_cols = ["Name", "Type", "SubnetId"]
+                    available_cols = [col for col in display_cols if col in df.columns]
+                    if available_cols:
+                        st.dataframe(
+                            df[available_cols].fillna("N/A"),
+                            use_container_width=True
+                        )
+        except Exception as e:
+            st.error(f"Errore caricamento dati EC2: {e}")
     
     def render_sg_inventory(self):
         """Render inventario Security Groups"""
-        sg_data = self.load_json("sg_raw.json")
-        sg_audit = self.load_json("sg_audit.json")
-        
-        if not sg_data:
-            st.info("ℹ️ Nessun dato Security Groups disponibile")
-            return
-        
-        security_groups = sg_data.get("SecurityGroups", [])
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.metric("🛡️ Total Security Groups", len(security_groups))
+        try:
+            sg_data = self.load_json("sg_raw.json")
+            sg_audit = self.load_json("sg_audit.json")
             
-            # Show SG with issues
-            if sg_audit:
-                open_ingress = len(sg_audit.get("open_ingress", []))
-                open_egress = len(sg_audit.get("open_egress", []))
+            if not sg_data:
+                st.info("ℹ️ Nessun dato Security Groups disponibile")
+                return
+            
+            security_groups = sg_data.get("SecurityGroups", [])
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.metric("🛡️ Total Security Groups", len(security_groups))
                 
-                if open_ingress > 0:
-                    st.warning(f"⚠️ {open_ingress} SG con regole ingress aperte")
-                if open_egress > 0:
-                    st.warning(f"⚠️ {open_egress} SG con regole egress aperte")
-        
-        with col2:
-            if security_groups:
-                # Create DataFrame for display
-                sg_summary = []
-                for sg in security_groups[:10]:  # Show first 10
-                    sg_summary.append({
-                        "Name": sg.get("GroupName", "N/A"),
-                        "ID": sg.get("GroupId", "N/A"),
-                        "Ingress Rules": len(sg.get("IpPermissions", [])),
-                        "Egress Rules": len(sg.get("IpPermissionsEgress", []))
-                    })
-                
-                if sg_summary:
-                    df = pd.DataFrame(sg_summary)
-                    st.dataframe(df, use_container_width=True)
+                # Show SG with issues
+                if sg_audit:
+                    open_ingress = len(sg_audit.get("open_ingress", []))
+                    unused = len(sg_audit.get("unused", []))
+                    
+                    if open_ingress > 0:
+                        st.warning(f"⚠️ {open_ingress} SG con regole ingress aperte")
+                    if unused > 0:
+                        st.info(f"ℹ️ {unused} SG non utilizzati")
+            
+            with col2:
+                if security_groups:
+                    # Create DataFrame for display
+                    sg_summary = []
+                    for sg in security_groups[:10]:  # Show first 10
+                        sg_summary.append({
+                            "Name": sg.get("GroupName", "N/A"),
+                            "ID": sg.get("GroupId", "N/A"),
+                            "Ingress Rules": len(sg.get("IpPermissions", [])),
+                            "Egress Rules": len(sg.get("IpPermissionsEgress", []))
+                        })
+                    
+                    if sg_summary:
+                        df = pd.DataFrame(sg_summary)
+                        st.dataframe(df, use_container_width=True)
+        except Exception as e:
+            st.error(f"Errore caricamento dati SG: {e}")
     
     def render_s3_inventory(self):
         """Render inventario S3"""
-        s3_data = self.load_json("s3_raw.json")
-        
-        if not s3_data or not isinstance(s3_data, list):
-            st.info("ℹ️ Nessun dato S3 disponibile")
-            return
-        
-        st.metric("🗂️ Total S3 Buckets", len(s3_data))
-        
-        # Check for public buckets
-        public_buckets = [b for b in s3_data if b.get("PublicAccess", False)]
-        if public_buckets:
-            st.error(f"🚨 {len(public_buckets)} bucket pubblicamente accessibili!")
-        
-        # Create DataFrame
-        bucket_summary = []
-        for bucket in s3_data:
-            bucket_summary.append({
-                "Name": bucket.get("Name", "N/A"),
-                "Creation Date": bucket.get("CreationDate", "N/A"),
-                "Public Access": "🔴 Yes" if bucket.get("PublicAccess", False) else "🟢 No",
-                "Has Policy": "Yes" if bucket.get("Policy") else "No"
-            })
-        
-        if bucket_summary:
-            df = pd.DataFrame(bucket_summary)
-            st.dataframe(df, use_container_width=True)
+        try:
+            s3_data = self.load_json("s3_raw.json")
+            
+            if not s3_data or not isinstance(s3_data, list):
+                st.info("ℹ️ Nessun dato S3 disponibile")
+                return
+            
+            st.metric("🗂️ Total S3 Buckets", len(s3_data))
+            
+            # Check for public buckets
+            public_buckets = [b for b in s3_data if b.get("PublicAccess", False)]
+            if public_buckets:
+                st.error(f"🚨 {len(public_buckets)} bucket pubblicamente accessibili!")
+            
+            # Create DataFrame
+            bucket_summary = []
+            for bucket in s3_data:
+                bucket_summary.append({
+                    "Name": bucket.get("Name", "N/A"),
+                    "Creation Date": bucket.get("CreationDate", "N/A"),
+                    "Public Access": "🔴 Yes" if bucket.get("PublicAccess", False) else "🟢 No",
+                    "Has Policy": "Yes" if bucket.get("Policy") else "No"
+                })
+            
+            if bucket_summary:
+                df = pd.DataFrame(bucket_summary)
+                st.dataframe(df, use_container_width=True)
+        except Exception as e:
+            st.error(f"Errore caricamento dati S3: {e}")
     
     def render_iam_inventory(self):
         """Render inventario IAM"""
-        iam_data = self.load_json("iam_raw.json")
-        
-        if not iam_data:
-            st.info("ℹ️ Nessun dato IAM disponibile")
-            return
-        
-        users = iam_data.get("Users", [])
-        roles = iam_data.get("Roles", [])
-        policies = iam_data.get("Policies", [])
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.metric("👤 IAM Users", len(users))
-        with col2:
-            st.metric("🎭 IAM Roles", len(roles))
-        with col3:
-            st.metric("📋 IAM Policies", len(policies))
-        
-        # Show recent users
-        if users:
-            st.subheader("Recent IAM Users")
-            user_summary = []
-            for user in users[:10]:
-                last_used = user.get("PasswordLastUsed", "Never")
-                if last_used and last_used != "Never":
-                    try:
-                        last_used_date = datetime.fromisoformat(last_used.replace('Z', '+00:00'))
-                        days_ago = (datetime.now() - last_used_date.replace(tzinfo=None)).days
-                        last_used = f"{days_ago} giorni fa"
-                    except:
-                        pass
-                
-                user_summary.append({
-                    "Username": user.get("UserName", "N/A"),
-                    "Created": user.get("CreateDate", "N/A")[:10],  # Only date part
-                    "Last Password Use": last_used
-                })
+        try:
+            iam_data = self.load_json("iam_raw.json")
             
-            if user_summary:
-                df = pd.DataFrame(user_summary)
-                st.dataframe(df, use_container_width=True)
+            if not iam_data:
+                st.info("ℹ️ Nessun dato IAM disponibile")
+                return
+            
+            users = iam_data.get("Users", [])
+            roles = iam_data.get("Roles", [])
+            policies = iam_data.get("Policies", [])
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("👤 IAM Users", len(users))
+            with col2:
+                st.metric("🎭 IAM Roles", len(roles))
+            with col3:
+                st.metric("📋 IAM Policies", len(policies))
+            
+            # Show recent users
+            if users:
+                st.subheader("Recent IAM Users")
+                user_summary = []
+                for user in users[:10]:
+                    last_used = user.get("PasswordLastUsed", "Never")
+                    if last_used and last_used != "Never":
+                        try:
+                            last_used_date = datetime.fromisoformat(last_used.replace('Z', '+00:00'))
+                            days_ago = (datetime.now() - last_used_date.replace(tzinfo=None)).days
+                            last_used = f"{days_ago} giorni fa"
+                        except:
+                            pass
+                    
+                    user_summary.append({
+                        "Username": user.get("UserName", "N/A"),
+                        "Created": user.get("CreateDate", "N/A")[:10] if user.get("CreateDate") else "N/A",
+                        "Last Password Use": last_used
+                    })
+                
+                if user_summary:
+                    df = pd.DataFrame(user_summary)
+                    st.dataframe(df, use_container_width=True)
+        except Exception as e:
+            st.error(f"Errore caricamento dati IAM: {e}")
     
     def render_network_map(self):
-        """Render mappa di rete interattiva"""
+        """Render mappa di rete interattiva con fallback"""
         st.subheader("🌐 Network Topology")
         
+        # Try to import and use pyvis
         try:
-            from pyvis.network import Network
             import networkx as nx
             import streamlit.components.v1 as components
+            
+            # Try to import pyvis with fallback
+            try:
+                from pyvis.network import Network
+                pyvis_available = True
+            except ImportError:
+                pyvis_available = False
+                st.warning("⚠️ PyVis non disponibile. Installare con: `pip install pyvis`")
+            
+            if not pyvis_available:
+                self.render_network_table()
+                return
             
             # Load data for network map
             ec2_data = self.load_json("ec2_audit.json")
@@ -509,18 +548,66 @@ class SecurityDashboard:
             """)
             
             # Generate and display
-            net.save_graph("temp_network.html")
-            with open("temp_network.html", "r", encoding="utf-8") as f:
+            temp_file = "temp_network.html"
+            net.save_graph(temp_file)
+            with open(temp_file, "r", encoding="utf-8") as f:
                 html = f.read()
             components.html(html, height=650)
             
             # Cleanup
-            os.remove("temp_network.html")
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
             
-        except ImportError:
-            st.error("❌ PyVis non installato. Installare con: pip install pyvis")
+        except ImportError as e:
+            st.error(f"❌ Librerie per mappa di rete non disponibili: {e}")
+            self.render_network_table()
         except Exception as e:
             st.error(f"❌ Errore generazione mappa: {e}")
+            self.render_network_table()
+    
+    def render_network_table(self):
+        """Fallback: render tabella connections invece di mappa"""
+        st.subheader("📋 Network Connections (Table View)")
+        
+        try:
+            ec2_data = self.load_json("ec2_audit.json")
+            sg_data = self.load_json("sg_raw.json")
+            
+            if not ec2_data or not sg_data:
+                st.info("ℹ️ Dati insufficienti")
+                return
+            
+            # Create connections table
+            connections = []
+            all_instances = ec2_data.get("active", []) + ec2_data.get("stopped", [])
+            
+            for instance in all_instances:
+                instance_name = instance.get("Name", instance.get("InstanceId", "Unknown"))
+                state = instance.get("State", "unknown")
+                
+                for sg_id in instance.get("SecurityGroups", []):
+                    # Find SG name
+                    sg_name = sg_id
+                    for sg in sg_data.get("SecurityGroups", []):
+                        if sg.get("GroupId") == sg_id:
+                            sg_name = sg.get("GroupName", sg_id)
+                            break
+                    
+                    connections.append({
+                        "Instance": instance_name,
+                        "State": state,
+                        "Security Group": sg_name,
+                        "SG ID": sg_id
+                    })
+            
+            if connections:
+                df = pd.DataFrame(connections)
+                st.dataframe(df, use_container_width=True)
+            else:
+                st.info("Nessuna connessione trovata")
+                
+        except Exception as e:
+            st.error(f"Errore generazione tabella: {e}")
     
     def render_sidebar(self):
         """Render sidebar con controlli"""
@@ -693,37 +780,42 @@ class SecurityDashboard:
     
     def run(self):
         """Esegue il dashboard"""
-        # Render sidebar
-        self.render_sidebar()
-        
-        # Main content
-        self.render_header()
-        
-        # Navigation tabs
-        tab1, tab2, tab3, tab4, tab5 = st.tabs([
-            "🏠 Overview", 
-            "🚨 Security", 
-            "📦 Resources", 
-            "🌐 Network", 
-            "📄 Raw Data"
-        ])
-        
-        with tab1:
-            self.render_metrics_overview()
-            st.markdown("---")
-            self.render_findings_charts()
-        
-        with tab2:
-            self.render_critical_findings()
-        
-        with tab3:
-            self.render_resource_inventory()
-        
-        with tab4:
-            self.render_network_map()
-        
-        with tab5:
-            self.render_raw_data_viewer()
+        try:
+            # Render sidebar
+            self.render_sidebar()
+            
+            # Main content
+            self.render_header()
+            
+            # Navigation tabs
+            tab1, tab2, tab3, tab4, tab5 = st.tabs([
+                "🏠 Overview", 
+                "🚨 Security", 
+                "📦 Resources", 
+                "🌐 Network", 
+                "📄 Raw Data"
+            ])
+            
+            with tab1:
+                self.render_metrics_overview()
+                st.markdown("---")
+                self.render_findings_charts()
+            
+            with tab2:
+                self.render_critical_findings()
+            
+            with tab3:
+                self.render_resource_inventory()
+            
+            with tab4:
+                self.render_network_map()
+            
+            with tab5:
+                self.render_raw_data_viewer()
+                
+        except Exception as e:
+            st.error(f"❌ Errore dashboard: {e}")
+            st.exception(e)
 
 
 # Main execution
