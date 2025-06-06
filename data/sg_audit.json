@@ -1,0 +1,13 @@
+{
+  "open_ingress": [],
+  "open_egress": [
+    {
+      "GroupId": "sg-5301db3a",
+      "GroupName": "default",
+      "Port": null,
+      "Protocol": "-1",
+      "Description": "default VPC security group",
+      "Direction": "egress"
+    }
+  ]
+}

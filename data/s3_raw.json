@@ -1,0 +1,79 @@
+[
+  {
+    "Name": "aws-cloudtrail-logs-837758803730-6f89ca4c",
+    "CreationDate": "2024-06-03 17:45:47+00:00",
+    "Policy": null,
+    "ACL": null,
+    "PublicAccess": false
+  },
+  {
+    "Name": "aws-us-east-1-837758803730-k1-test-pipe",
+    "CreationDate": "2020-10-09 10:03:29+00:00",
+    "Policy": null,
+    "ACL": null,
+    "PublicAccess": false
+  },
+  {
+    "Name": "aws-us-east-1-837758803730-k1-test-simpleappbucket",
+    "CreationDate": "2020-10-09 10:06:53+00:00",
+    "Policy": null,
+    "ACL": null,
+    "PublicAccess": false
+  },
+  {
+    "Name": "buckets-lists",
+    "CreationDate": "2022-12-21 14:12:32+00:00",
+    "Policy": null,
+    "ACL": null,
+    "PublicAccess": false
+  },
+  {
+    "Name": "cf-templates-1xb7n9q1kvlgg-us-east-1",
+    "CreationDate": "2023-02-20 12:39:47+00:00",
+    "Policy": null,
+    "ACL": null,
+    "PublicAccess": false
+  },
+  {
+    "Name": "k1archive",
+    "CreationDate": "2023-12-22 11:36:59+00:00",
+    "Policy": null,
+    "ACL": null,
+    "PublicAccess": false
+  },
+  {
+    "Name": "k1layers",
+    "CreationDate": "2023-11-25 09:26:40+00:00",
+    "Policy": null,
+    "ACL": null,
+    "PublicAccess": false
+  },
+  {
+    "Name": "k1logging",
+    "CreationDate": "2025-04-15 08:18:49+00:00",
+    "Policy": null,
+    "ACL": null,
+    "PublicAccess": false
+  },
+  {
+    "Name": "k1parking",
+    "CreationDate": "2024-11-19 08:55:55+00:00",
+    "Policy": null,
+    "ACL": null,
+    "PublicAccess": false
+  },
+  {
+    "Name": "k1storage",
+    "CreationDate": "2024-01-24 17:03:23+00:00",
+    "Policy": null,
+    "ACL": null,
+    "PublicAccess": false
+  },
+  {
+    "Name": "lsg-hosting",
+    "CreationDate": "2025-04-19 10:55:16+00:00",
+    "Policy": null,
+    "ACL": null,
+    "PublicAccess": false
+  }
+]

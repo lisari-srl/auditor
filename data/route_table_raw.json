@@ -1,0 +1,49 @@
+{
+  "RouteTables": [
+    {
+      "Associations": [
+        {
+          "Main": true,
+          "RouteTableAssociationId": "rtbassoc-6bb17a02",
+          "RouteTableId": "rtb-d4c00bbd",
+          "AssociationState": {
+            "State": "associated"
+          }
+        }
+      ],
+      "PropagatingVgws": [],
+      "RouteTableId": "rtb-d4c00bbd",
+      "Routes": [
+        {
+          "DestinationCidrBlock": "172.31.0.0/16",
+          "GatewayId": "local",
+          "Origin": "CreateRouteTable",
+          "State": "active"
+        },
+        {
+          "DestinationCidrBlock": "0.0.0.0/0",
+          "GatewayId": "igw-9cac57f5",
+          "Origin": "CreateRoute",
+          "State": "active"
+        }
+      ],
+      "Tags": [],
+      "VpcId": "vpc-66c8080f",
+      "OwnerId": "837758803730"
+    }
+  ],
+  "ResponseMetadata": {
+    "RequestId": "20a45f18-b7aa-4a92-9a4b-1408b08fc781",
+    "HTTPStatusCode": 200,
+    "HTTPHeaders": {
+      "x-amzn-requestid": "20a45f18-b7aa-4a92-9a4b-1408b08fc781",
+      "cache-control": "no-cache, no-store",
+      "strict-transport-security": "max-age=31536000; includeSubDomains",
+      "content-type": "text/xml;charset=UTF-8",
+      "content-length": "937",
+      "date": "Fri, 06 Jun 2025 13:18:19 GMT",
+      "server": "AmazonEC2"
+    },
+    "RetryAttempts": 0
+  }
+}

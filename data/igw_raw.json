@@ -1,0 +1,29 @@
+{
+  "InternetGateways": [
+    {
+      "Attachments": [
+        {
+          "State": "available",
+          "VpcId": "vpc-66c8080f"
+        }
+      ],
+      "InternetGatewayId": "igw-9cac57f5",
+      "OwnerId": "837758803730",
+      "Tags": []
+    }
+  ],
+  "ResponseMetadata": {
+    "RequestId": "c729c91e-2e24-485c-a21b-fe6d8c5e80a2",
+    "HTTPStatusCode": 200,
+    "HTTPHeaders": {
+      "x-amzn-requestid": "c729c91e-2e24-485c-a21b-fe6d8c5e80a2",
+      "cache-control": "no-cache, no-store",
+      "strict-transport-security": "max-age=31536000; includeSubDomains",
+      "content-type": "text/xml;charset=UTF-8",
+      "content-length": "456",
+      "date": "Fri, 06 Jun 2025 13:18:19 GMT",
+      "server": "AmazonEC2"
+    },
+    "RetryAttempts": 0
+  }
+}
