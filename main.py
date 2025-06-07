@@ -403,25 +403,35 @@ class AWSAuditor:
             }
     
     def start_dashboard(self, host: str = "localhost"):
-        """Avvia il dashboard Streamlit"""
+        """Avvia il dashboard Streamlit con FETCH e AUDIT automatici"""
         print("🚀 Avvio dashboard Streamlit...")
-        
+
         # Verifica che streamlit sia installato
         try:
             import streamlit
         except ImportError:
             print("❌ Streamlit non trovato. Installare con: pip install streamlit")
             return
-        
+
+        # Esegui FETCH e AUDIT prima di avviare la dashboard
+        print("📡 Eseguo FETCH e AUDIT prima di avviare la dashboard...")
+        try:
+            asyncio.run(self.run_full_audit(use_cache=True, force_cleanup=True))
+            print("✅ FETCH e AUDIT completati!")
+        except Exception as e:
+            print(f"⚠️ Errore durante FETCH e AUDIT: {e}")
+            print("   La dashboard potrebbe mostrare dati incompleti o vecchi.")
+
         # Verifica che esistano dati
         data_dir = Path("data")
         if not data_dir.exists() or not any(data_dir.glob("*.json")):
-            print("⚠️  Nessun dato trovato. Il dashboard sarà vuoto.")
-            print("   Suggerimento: eseguire prima 'python main.py --fetch-only'")
-        
+            print("⚠️ Nessun dato trovato. Il dashboard sarà vuoto.")
+            print("   Suggerimento: eseguire manualmente 'python main.py --fetch-only'")
+
+        # Avvia Streamlit
         import subprocess
         import socket
-        
+
         def is_port_available(port, host="localhost"):
             """Verifica se una porta è disponibile"""
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -430,11 +440,11 @@ class AWSAuditor:
                     return True
                 except:
                     return False
-        
+
         # Trova una porta disponibile
         base_port = int(os.getenv("STREAMLIT_SERVER_PORT", "8501"))
         port = base_port
-        
+
         for i in range(10):  # Prova 10 porte consecutive
             if is_port_available(port, host):
                 break
@@ -442,18 +452,18 @@ class AWSAuditor:
         else:
             print(f"❌ Nessuna porta disponibile da {base_port} a {base_port + 9}")
             return
-        
+
         if port != base_port:
-            print(f"⚠️  Porta {base_port} occupata, uso porta {port}")
-        
+            print(f"⚠️ Porta {base_port} occupata, uso porta {port}")
+
         try:
             # Determina l'indirizzo di binding
             server_address = host if host != "localhost" else "localhost"
-            
+
             print(f"🌐 Dashboard disponibile su: http://localhost:{port}")
             if host != "localhost":
                 print(f"🌐 Accessibile anche da: http://{host}:{port}")
-            
+
             # Comando streamlit ottimizzato
             cmd = [
                 "streamlit", "run", "dashboard/app.py",
@@ -462,13 +472,13 @@ class AWSAuditor:
                 "--server.headless", "true",
                 "--browser.gatherUsageStats", "false"
             ]
-            
+
             # Se è localhost, non specificare --server.enableXsrfProtection
             if host == "localhost":
                 cmd.extend(["--server.enableXsrfProtection", "false"])
-            
+
             subprocess.run(cmd, check=True)
-            
+
         except subprocess.CalledProcessError as e:
             error_msg = str(e)
             if "Port" in error_msg and "already in use" in error_msg:

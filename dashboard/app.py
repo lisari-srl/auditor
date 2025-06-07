@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 from pathlib import Path
 import sys
+import subprocess
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
@@ -624,32 +625,48 @@ class SecurityDashboard:
         with col1:
             if st.button("📡 Fetch", help="Fetch AWS data"):
                 with st.spinner("Fetching..."):
-                    import subprocess
-                    # FIX: Usa il path corretto per main.py
-                    main_path = Path(__file__).parent.parent / "main.py"
-                    result = subprocess.run([
-                        "python", str(main_path), "--fetch-only"
-                    ], capture_output=True, text=True, cwd=main_path.parent)
-                    if result.returncode == 0:
-                        st.success("✅ Fetch completed")
-                        st.rerun()
-                    else:
-                        st.error(f"❌ Fetch failed: {result.stderr}")
+                    try:
+                        # Ottieni path assoluto allo script main.py
+                        main_path = str(Path(__file__).parent.parent / "main.py")
+                        
+                        # Esegui il comando nella directory corretta
+                        result = subprocess.run(
+                            ["python", main_path, "--fetch-only"],
+                            capture_output=True, text=True,
+                            cwd=str(Path(__file__).parent.parent)
+                        )
+                        
+                        if result.returncode == 0:
+                            st.success("✅ Fetch completed")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ Fetch failed: {result.stderr}")
+                            st.code(result.stderr)
+                    except Exception as e:
+                        st.error(f"❌ Error: {str(e)}")
         
         with col2:
             if st.button("🔍 Audit", help="Run security audit"):
                 with st.spinner("Auditing..."):
-                    import subprocess
-                    # FIX: Usa il path corretto per main.py
-                    main_path = Path(__file__).parent.parent / "main.py"
-                    result = subprocess.run([
-                        "python", str(main_path), "--audit-only"
-                    ], capture_output=True, text=True, cwd=main_path.parent)
-                    if result.returncode == 0:
-                        st.success("✅ Audit completed")
-                        st.rerun()
-                    else:
-                        st.error(f"❌ Audit failed: {result.stderr}")
+                    try:
+                        # Ottieni path assoluto allo script main.py
+                        main_path = str(Path(__file__).parent.parent / "main.py")
+                        
+                        # Esegui il comando nella directory corretta
+                        result = subprocess.run(
+                            ["python", main_path, "--audit-only"],
+                            capture_output=True, text=True,
+                            cwd=str(Path(__file__).parent.parent)
+                        )
+                        
+                        if result.returncode == 0:
+                            st.success("✅ Audit completed")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ Audit failed: {result.stderr}")
+                            st.code(result.stderr)
+                    except Exception as e:
+                        st.error(f"❌ Error: {str(e)}")
         
         # Data freshness
         data_files = ["ec2_raw.json", "sg_raw.json", "iam_raw.json"]
