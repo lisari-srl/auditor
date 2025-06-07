@@ -1,7 +1,7 @@
-# main.py
 #!/usr/bin/env python3
 """
-AWS Infrastructure Security Auditor - Versione Ottimizzata v2.1
+AWS Infrastructure Security Auditor - Complete Version v2.1
+Enhanced with cost analysis, security groups optimization, and infrastructure cleanup
 """
 
 import asyncio
@@ -10,10 +10,12 @@ import sys
 import os
 import time
 import shutil
+import json
 from typing import List, Optional
 from pathlib import Path
+from datetime import datetime
 
-# Aggiungi il path corrente per import
+# Add current path for imports
 sys.path.append(str(Path(__file__).parent))
 
 from config.settings import AWSConfig
@@ -24,13 +26,13 @@ from audit.audit_engine import AuditEngine
 from config.audit_rules import Severity
 
 class AWSAuditor:
-    """Classe principale per orchestrare l'audit AWS"""
+    """Classe principale per orchestrare l'audit AWS completo"""
     
     def __init__(self, config_file: Optional[str] = None):
         # Carica configurazione
         self.config = AWSConfig.from_file(config_file) if config_file else AWSConfig()
         
-        # Inizializza componenti
+        # Inizializza componenti base
         self.fetcher = AsyncAWSFetcher(self.config)
         self.cache = SmartCache(ttl=self.config.cache_ttl)
         self.processor = DataProcessor()
@@ -67,23 +69,14 @@ class AWSAuditor:
                     print(f"   ⚠️  Impossibile pulire {temp_dir}: {e}")
         
         # Pulisci file temporanei
-        temp_files = ["temp_network.html", "*.tmp", "*.log"]
-        for pattern in temp_files:
-            if "*" in pattern:
-                import glob
-                for file_path in glob.glob(pattern):
-                    try:
-                        os.remove(file_path)
-                        print(f"   ✅ File {file_path} rimosso")
-                    except Exception:
-                        pass
-            else:
-                if os.path.exists(pattern):
-                    try:
-                        os.remove(pattern)
-                        print(f"   ✅ File {pattern} rimosso")
-                    except Exception:
-                        pass
+        temp_files = ["temp_network.html"]
+        for temp_file in temp_files:
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                    print(f"   ✅ File {temp_file} rimosso")
+                except Exception:
+                    pass
     
     def optimize_system(self):
         """Ottimizza il sistema prima dell'audit"""
@@ -124,7 +117,7 @@ class AWSAuditor:
         return True
     
     async def run_full_audit(self, use_cache: bool = True, force_cleanup: bool = True) -> dict:
-        """Esegue audit completo: cleanup + fetch + analyze + report"""
+        """Esegue audit completo: cleanup + fetch + analyze + optimize + report"""
         print("🚀 Avvio AWS Security Audit Completo...")
         start_time = time.time()
         
@@ -140,12 +133,25 @@ class AWSAuditor:
                     "execution_time": time.time() - start_time
                 }
             
-            # 1. Fetch dei dati
-            print("\n📡 FASE 1: Fetching risorse AWS...")
+            # 1. Fetch dei dati (ESTESO)
+            print("\n📡 FASE 1: Fetching risorse AWS complete...")
             fetch_start = time.time()
-            await self.fetcher.fetch_all_resources()
+            
+            # Usa Extended Fetcher se disponibile
+            try:
+                from utils.extended_aws_fetcher import ExtendedAWSFetcher
+                extended_fetcher = ExtendedAWSFetcher(self.config)
+                await extended_fetcher.fetch_all_extended_resources()
+                print("   ✅ Extended fetch completato")
+            except ImportError:
+                print("   ⚠️  Extended fetcher non disponibile, uso fetch standard")
+                await self.fetcher.fetch_all_resources()
+            except Exception as e:
+                print(f"   ⚠️  Errore extended fetch: {e}, uso fetch standard")
+                await self.fetcher.fetch_all_resources()
+            
             fetch_time = time.time() - fetch_start
-            print(f"   ✅ Fetch completato in {fetch_time:.2f}s")
+            print(f"   ✅ Fetch completo in {fetch_time:.2f}s")
             
             # 2. Process dei dati
             print("\n📊 FASE 2: Processing dati...")
@@ -155,8 +161,11 @@ class AWSAuditor:
             process_time = time.time() - process_start
             print(f"   ✅ Processing completato in {process_time:.2f}s")
             
-            # 3. Esegui audit di sicurezza
-            print("\n🔍 FASE 3: Audit di sicurezza...")
+            # Carica tutti i dati processati
+            all_data = self._load_all_processed_data()
+            
+            # 3. Esegui audit di sicurezza standard
+            print("\n🔍 FASE 3: Audit di sicurezza standard...")
             audit_start = time.time()
             all_findings = []
             
@@ -170,188 +179,167 @@ class AWSAuditor:
                     continue
             
             audit_time = time.time() - audit_start
-            print(f"   ✅ Audit completato in {audit_time:.2f}s")
+            print(f"   ✅ Audit standard completato in {audit_time:.2f}s")
             
-            # 4. Genera summary
-            summary = self._generate_global_summary(all_findings)
+            # 4. Analisi costi avanzata (opzionale)
+            print("\n💰 FASE 4: Analisi costi e ottimizzazioni...")
+            cost_start = time.time()
+            
+            cost_results = {}
+            total_monthly_savings = 0
+            
+            try:
+                from utils.cost_analyzer import AdvancedCostAnalyzer
+                
+                for region in self.config.regions:
+                    print(f"   💰 Analisi costi {region}...")
+                    cost_analyzer = AdvancedCostAnalyzer(region)
+                    region_cost_analysis = await cost_analyzer.analyze_complete_costs(all_data)
+                    cost_results[region] = region_cost_analysis
+                    total_monthly_savings += region_cost_analysis.get("potential_monthly_savings", 0)
+                
+                print(f"   ✅ Analisi costi completata")
+                print(f"   💰 Potenziali risparmi: ${total_monthly_savings:.2f}/mese")
+                
+            except ImportError:
+                print("   ⚠️  Cost analyzer non disponibile, skip")
+            except Exception as e:
+                print(f"   ⚠️  Errore analisi costi: {e}")
+                total_monthly_savings = 0
+            
+            cost_time = time.time() - cost_start
+            
+            # 5. Ottimizzazione Security Groups (opzionale)
+            print("\n🛡️  FASE 5: Ottimizzazione Security Groups...")
+            sg_start = time.time()
+            
+            sg_results = {}
+            total_critical_sg_issues = 0
+            
+            try:
+                from utils.simple_sg_optimizer import analyze_security_groups_simple
+                
+                for region in self.config.regions:
+                    print(f"   🛡️  Analisi SG {region}...")
+                    region_sg_analysis = analyze_security_groups_simple(all_data, region)
+                    sg_results[region] = region_sg_analysis
+                    total_critical_sg_issues += region_sg_analysis.get("critical_issues", 0)
+                
+                print(f"   ✅ Ottimizzazione SG completata")
+                
+                if total_critical_sg_issues > 0:
+                    print(f"   🚨 ATTENZIONE: {total_critical_sg_issues} problemi critici Security Groups!")
+                
+            except ImportError:
+                print("   ⚠️  SG optimizer non disponibile, skip")
+            except Exception as e:
+                print(f"   ⚠️  Errore ottimizzazione SG: {e}")
+                total_critical_sg_issues = 0
+            
+            sg_time = time.time() - sg_start
+            
+            # 6. Piano cleanup infrastruttura (opzionale)
+            print("\n🧹 FASE 6: Piano cleanup infrastruttura...")
+            cleanup_start = time.time()
+            
+            cleanup_results = {}
+            total_annual_savings = 0
+            
+            try:
+                from utils.simple_cleanup_orchestrator import create_infrastructure_cleanup_plan
+                
+                for region in self.config.regions:
+                    print(f"   🧹 Piano cleanup {region}...")
+                    region_cleanup = create_infrastructure_cleanup_plan(all_data, region)
+                    cleanup_results[region] = region_cleanup
+                    total_annual_savings += region_cleanup.get("estimated_annual_savings", 0)
+                
+                print(f"   ✅ Piano cleanup completato")
+                print(f"   💰 Risparmi annuali stimati: ${total_annual_savings:.2f}")
+                
+            except ImportError:
+                print("   ⚠️  Cleanup orchestrator non disponibile, skip")
+            except Exception as e:
+                print(f"   ⚠️  Errore piano cleanup: {e}")
+                total_annual_savings = 0
+            
+            cleanup_time = time.time() - cleanup_start
+            
+            # 7. Genera summary globale
+            summary = self._generate_comprehensive_summary(
+                all_findings, cost_results, sg_results, cleanup_results
+            )
+            
             total_time = time.time() - start_time
             
-            # 5. Report finale
-            print(f"\n🎯 AUDIT SUMMARY")
-            print("=" * 50)
-            print(f"   ⏱️  Total Time: {total_time:.2f}s")
-            print(f"   📊 Total Findings: {len(all_findings)}")
-            print(f"   🔴 Critical: {summary['critical']}")
-            print(f"   🟠 High: {summary['high']}")
-            print(f"   🟡 Medium: {summary['medium']}")
-            print(f"   🔵 Low: {summary['low']}")
-            print("=" * 50)
+            # 8. Report finale completo
+            print(f"\n🎯 AUDIT COMPLETO - RISULTATI FINALI")
+            print("=" * 60)
+            print(f"   ⏱️  Tempo Totale: {total_time:.2f}s")
+            print(f"   📊 Audit Standard: {len(all_findings)} findings")
+            print(f"   🔴 Critical Standard: {summary['standard_critical']}")
+            print(f"   🟠 High Standard: {summary['standard_high']}")
+            print("")
             
-            # 6. Avvisi per findings critici
-            critical_findings = [f for f in all_findings if f.severity == Severity.CRITICAL]
-            high_findings = [f for f in all_findings if f.severity == Severity.HIGH]
+            if total_monthly_savings > 0:
+                print(f"   💰 Analisi Costi:")
+                print(f"      - Risparmi mensili: ${total_monthly_savings:.2f}")
+                print(f"      - Risparmi annuali: ${total_monthly_savings * 12:.2f}")
+                print("")
             
-            if critical_findings or high_findings:
-                print(f"\n🚨 FINDINGS PRIORITARI:")
+            if total_critical_sg_issues > 0 or len(sg_results) > 0:
+                print(f"   🛡️  Security Groups:")
+                if total_critical_sg_issues > 0:
+                    print(f"      - 🚨 CRITICAL: {total_critical_sg_issues} problemi di sicurezza!")
+                else:
+                    print(f"      - ✅ Nessun problema critico")
+                print("")
+            
+            if total_annual_savings > 0:
+                print(f"   🧹 Cleanup Infrastruttura:")
+                print(f"      - Risparmi annuali: ${total_annual_savings:.2f}")
+                print(f"      - Items da pulire: {summary.get('total_cleanup_items', 0)}")
+                print("")
+            
+            print("=" * 60)
+            
+            # 9. Avvisi prioritari
+            if total_critical_sg_issues > 0 or summary['standard_critical'] > 0:
+                print(f"\n🚨 AZIONI IMMEDIATE RICHIESTE:")
                 
-                if critical_findings:
-                    print(f"\n🔴 CRITICAL ({len(critical_findings)}):")
-                    for i, finding in enumerate(critical_findings[:3], 1):
-                        print(f"   {i}. {finding.resource_name}: {finding.rule_name}")
-                    if len(critical_findings) > 3:
-                        print(f"   ... e altri {len(critical_findings) - 3} critical findings")
+                if total_critical_sg_issues > 0:
+                    print(f"   🛡️  Security Groups: {total_critical_sg_issues} problemi critici")
+                    print(f"      → Esegui: bash reports/security_groups/critical_fixes.sh")
                 
-                if high_findings:
-                    print(f"\n🟠 HIGH ({len(high_findings)}):")
-                    for i, finding in enumerate(high_findings[:2], 1):
-                        print(f"   {i}. {finding.resource_name}: {finding.rule_name}")
-                    if len(high_findings) > 2:
-                        print(f"   ... e altri {len(high_findings) - 2} high findings")
-                        
-                print(f"\n📋 Per dettagli completi: controlla reports/security_audit_report.md")
-            else:
-                print(f"\n✅ Nessun finding critico o high priority trovato!")
+                if summary['standard_critical'] > 0:
+                    print(f"   🔍 Audit Standard: {summary['standard_critical']} finding critici")
+                    print(f"      → Controlla: reports/security_audit_report.md")
+                
+                print(f"   💾 BACKUP PRIMA: bash reports/cleanup/1_backup_everything.sh")
             
-            # 7. Suggerimenti prossimi passi
-            print(f"\n💡 PROSSIMI PASSI:")
-            print(f"   📊 Dashboard: python main.py --dashboard")
-            print(f"   🔍 Re-audit: python main.py --audit-only")
-            print(f"   📁 Reports: controlla la directory /reports")
+            # 10. Suggerimenti prossimi passi
+            print(f"\n💡 PROSSIMI PASSI CONSIGLIATI:")
+            print(f"   1. 📊 Dashboard: python main.py --dashboard")
             
-            return {
-                "success": True,
-                "total_findings": len(all_findings),
-                "summary": summary,
-                "critical_findings": len(critical_findings),
-                "high_findings": len(high_findings),
-                "execution_time": total_time,
-                "regions_audited": list(self.audit_engines.keys()),
-                "phases": {
-                    "fetch_time": fetch_time,
-                    "process_time": process_time,
-                    "audit_time": audit_time
-                }
-            }
+            if len(cleanup_results) > 0:
+                print(f"   2. 💾 Backup: bash reports/cleanup/1_backup_everything.sh")
             
-        except KeyboardInterrupt:
-            print("\n🛑 Audit interrotto dall'utente")
-            return {
-                "success": False,
-                "error": "User interrupted",
-                "execution_time": time.time() - start_time
-            }
-        except Exception as e:
-            print(f"\n❌ Errore durante l'audit: {e}")
-            import traceback
-            traceback.print_exc()
-            return {
-                "success": False,
-                "error": str(e),
-                "execution_time": time.time() - start_time,
-                "traceback": traceback.format_exc()
-            }
-    
-    def _generate_global_summary(self, findings: List) -> dict:
-        """Genera summary globale di tutti i findings"""
-        summary = {"critical": 0, "high": 0, "medium": 0, "low": 0}
-        
-        for finding in findings:
-            severity_key = finding.severity.value if hasattr(finding.severity, 'value') else str(finding.severity)
-            if severity_key in summary:
-                summary[severity_key] += 1
-        
-        return summary
-    
-    async def run_fetch_only(self, force_cleanup: bool = False) -> dict:
-        """Esegue solo il fetch dei dati senza audit"""
-        print("📡 Fetching dati AWS...")
-        start_time = time.time()
-        
-        try:
-            # Pulizia opzionale
-            if force_cleanup:
-                self.cleanup_old_data()
+            if total_critical_sg_issues > 0:
+                print(f"   3. 🚨 Fix SG critici: bash reports/security_groups/critical_fixes.sh")
             
-            # Verifica sistema
-            if not self.optimize_system():
-                return {
-                    "success": False,
-                    "error": "System check failed",
-                    "execution_time": time.time() - start_time
-                }
+            if total_annual_savings > 1000:
+                print(f"   4. 💰 Cleanup costi: bash reports/cleanup/3_cost_optimization.sh")
             
-            # Fetch
-            await self.fetcher.fetch_all_resources()
+            print(f"   5. 🔍 Report completi: directory /reports")
             
-            # Process dei dati anche nel fetch-only
-            print("📊 Processing dati...")
-            self.processor.process_all_data()
-            
-            execution_time = time.time() - start_time
-            
-            print(f"✅ Fetch e processing completati in {execution_time:.2f}s")
-            return {
-                "success": True,
-                "execution_time": execution_time,
-                "regions": self.config.regions
-            }
-        except Exception as e:
-            print(f"❌ Errore durante fetch: {e}")
-            import traceback
-            traceback.print_exc()
-            return {
-                "success": False,
-                "error": str(e),
-                "execution_time": time.time() - start_time
-            }
-    
-    def run_audit_only(self, force_cleanup: bool = False) -> dict:
-        """Esegue solo l'audit sui dati esistenti"""
-        print("🔍 Esecuzione audit sui dati esistenti...")
-        start_time = time.time()
-        
-        try:
-            # Pulizia opzionale
-            if force_cleanup:
-                self.cleanup_old_data()
-            
-            # Verifica che esistano dati da auditare
-            data_dir = Path("data")
-            if not data_dir.exists() or not any(data_dir.glob("*.json")):
-                print("❌ Nessun dato trovato in /data. Eseguire prima 'python main.py --fetch-only'")
-                return {
-                    "success": False,
-                    "error": "No data found",
-                    "execution_time": time.time() - start_time
-                }
-            
-            # Process dei dati se necessario
-            print("📊 Verifica processing dati...")
-            self.processor.process_all_data()
-            
-            all_findings = []
-            
-            for region, engine in self.audit_engines.items():
-                print(f"   🌍 Audit regione {region}...")
-                try:
-                    findings = engine.run_all_audits()
-                    all_findings.extend(findings)
-                except Exception as e:
-                    print(f"   ❌ Errore audit {region}: {e}")
-                    continue
-            
-            summary = self._generate_global_summary(all_findings)
-            execution_time = time.time() - start_time
-            
-            print(f"✅ Audit completato in {execution_time:.2f}s")
-            print(f"   Total Findings: {len(all_findings)}")
-            
-            # Mostra findings critici
-            critical_findings = [f for f in all_findings if f.severity == Severity.CRITICAL]
-            if critical_findings:
-                print(f"\n🚨 {len(critical_findings)} FINDING CRITICI:")
-                for finding in critical_findings[:3]:
-                    print(f"   • {finding.resource_name}: {finding.rule_name}")
+            # 11. Salva risultati estesi
+            self._save_comprehensive_results({
+                "standard_findings": all_findings,
+                "cost_analysis": cost_results,
+                "security_groups": sg_results,
+                "cleanup_plan": cleanup_results,
+                "summary": summary
+            })
             
             return {
                 "success": True,
@@ -450,24 +438,32 @@ class AWSAuditor:
             print("   Installare con: pip install streamlit")
         except KeyboardInterrupt:
             print("\n🛑 Dashboard fermato dall'utente")
+    
+    def _generate_global_summary(self, findings: List) -> dict:
+        """Genera summary globale di tutti i findings"""
+        summary = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+        
+        for finding in findings:
+            severity_key = finding.severity.value if hasattr(finding.severity, 'value') else str(finding.severity)
+            if severity_key in summary:
+                summary[severity_key] += 1
+        
+        return summary
 
 
 def main():
-    """Funzione principale con CLI"""
+    """Funzione principale con CLI semplificata"""
     parser = argparse.ArgumentParser(
         description="🔍 AWS Infrastructure Security Auditor v2.1",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Esempi di utilizzo:
-  python main.py                          # Audit completo con pulizia automatica
-  python main.py --fetch-only             # Solo fetch dati (con pulizia)
+  python main.py                          # Audit completo 
+  python main.py --fetch-only             # Solo fetch dati
   python main.py --audit-only             # Solo audit su dati esistenti
-  python main.py --dashboard              # Avvia dashboard (localhost)
-  python main.py --dashboard --host 0.0.0.0  # Dashboard accessibile da rete
-  python main.py --config custom.json    # Usa configurazione custom
-  python main.py --regions us-east-1,eu-west-1  # Specifica regioni
-  python main.py --no-cleanup            # Disabilita pulizia automatica
-  python main.py --quick                 # Audit veloce (no fetch, no cleanup)
+  python main.py --dashboard              # Avvia dashboard
+  python main.py --quick                  # Audit veloce senza fetch
+  python main.py --regions us-east-1      # Regione specifica
         """
     )
     
@@ -506,11 +502,6 @@ Esempi di utilizzo:
         help="Regioni AWS da auditare (comma-separated)"
     )
     parser.add_argument(
-        "--no-cache",
-        action="store_true",
-        help="Disabilita uso della cache"
-    )
-    parser.add_argument(
         "--no-cleanup",
         action="store_true",
         help="Disabilita pulizia automatica"
@@ -519,12 +510,6 @@ Esempi di utilizzo:
         "--services",
         type=str,
         help="Servizi da auditare (comma-separated): ec2,s3,iam,vpc"
-    )
-    parser.add_argument(
-        "--output-format",
-        choices=["json", "md", "both"],
-        default="both",
-        help="Formato output dei report"
     )
     parser.add_argument(
         "--verbose", "-v",
@@ -536,11 +521,6 @@ Esempi di utilizzo:
         type=str,
         default="localhost",
         help="Host per il dashboard (default: localhost, usa 0.0.0.0 per accesso rete)"
-    )
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Forza l'esecuzione anche in caso di warning"
     )
     
     args = parser.parse_args()
@@ -589,8 +569,7 @@ Esempi di utilizzo:
             sys.exit(0 if result["success"] else 1)
         else:
             # Audit completo (default)
-            use_cache = not args.no_cache
-            result = asyncio.run(auditor.run_full_audit(use_cache, force_cleanup))
+            result = asyncio.run(auditor.run_full_audit(use_cache=True, force_cleanup=force_cleanup))
             
             # Exit code basato sui risultati
             if not result["success"]:
@@ -615,3 +594,359 @@ Esempi di utilizzo:
 
 if __name__ == "__main__":
     main()
+                "critical_findings": summary['standard_critical'],
+                "high_findings": summary['standard_high'],
+                "cost_savings": {
+                    "monthly": total_monthly_savings,
+                    "annual": total_monthly_savings * 12
+                },
+                "security_groups": {
+                    "critical_issues": total_critical_sg_issues,
+                    "total_optimizations": sum(r.get("total_findings", 0) for r in sg_results.values())
+                },
+                "cleanup": {
+                    "annual_savings": total_annual_savings,
+                    "total_items": summary.get('total_cleanup_items', 0)
+                },
+                "execution_time": total_time,
+                "regions_audited": list(self.audit_engines.keys()),
+                "phases": {
+                    "fetch_time": fetch_time,
+                    "process_time": process_time,
+                    "audit_time": audit_time,
+                    "cost_time": cost_time,
+                    "sg_time": sg_time,
+                    "cleanup_time": cleanup_time
+                }
+            }
+            
+        except KeyboardInterrupt:
+            print("\n🛑 Audit interrotto dall'utente")
+            return {
+                "success": False,
+                "error": "User interrupted",
+                "execution_time": time.time() - start_time
+            }
+        except Exception as e:
+            print(f"\n❌ Errore durante l'audit: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "success": False,
+                "error": str(e),
+                "execution_time": time.time() - start_time,
+                "traceback": traceback.format_exc()
+            }
+    
+    def _load_all_processed_data(self) -> dict:
+        """Carica tutti i dati processati da tutte le fasi"""
+        all_data = {}
+        data_dir = Path("data")
+        
+        if not data_dir.exists():
+            return {}
+        
+        # Carica tutti i file JSON dalla directory data
+        for json_file in data_dir.glob("*.json"):
+            try:
+                with open(json_file, 'r') as f:
+                    data = json.load(f)
+                    # Usa il nome del file (senza estensione) come chiave
+                    key = json_file.stem
+                    all_data[key] = data
+            except Exception as e:
+                print(f"   ⚠️  Errore caricamento {json_file.name}: {e}")
+        
+        return all_data
+
+    def _generate_comprehensive_summary(self, standard_findings, cost_results, sg_results, cleanup_results) -> dict:
+        """Genera summary comprensivo di tutti i risultati"""
+        
+        # Standard audit summary
+        standard_summary = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+        for finding in standard_findings:
+            severity_key = finding.severity.value if hasattr(finding.severity, 'value') else str(finding.severity)
+            if severity_key in standard_summary:
+                standard_summary[severity_key] += 1
+        
+        # Cost analysis summary
+        total_cost_optimizations = 0
+        for region_results in cost_results.values():
+            total_cost_optimizations += len(region_results.get("optimizations", []))
+        
+        # Security Groups summary
+        total_sg_issues = 0
+        total_sg_critical = 0
+        for region_results in sg_results.values():
+            total_sg_issues += region_results.get("total_findings", 0)
+            total_sg_critical += region_results.get("critical_issues", 0)
+        
+        # Cleanup summary
+        total_cleanup_items = 0
+        for region_results in cleanup_results.values():
+            total_cleanup_items += region_results.get("total_items", 0)
+        
+        return {
+            "standard_critical": standard_summary["critical"],
+            "standard_high": standard_summary["high"],
+            "standard_medium": standard_summary["medium"],
+            "standard_low": standard_summary["low"],
+            "total_cost_optimizations": total_cost_optimizations,
+            "total_sg_issues": total_sg_issues,
+            "total_sg_critical": total_sg_critical,
+            "total_cleanup_items": total_cleanup_items,
+            "analysis_phases": 6,
+            "regions_analyzed": len(self.config.regions)
+        }
+
+    def _save_comprehensive_results(self, results: dict):
+        """Salva tutti i risultati in un report comprensivo"""
+        os.makedirs("reports", exist_ok=True)
+        
+        # Salva summary completo
+        with open("reports/comprehensive_audit_summary.json", "w") as f:
+            json.dump({
+                "audit_date": datetime.now().isoformat(),
+                "regions": self.config.regions,
+                "results": results
+            }, f, indent=2, default=str)
+        
+        # Genera report markdown comprensivo
+        self._generate_comprehensive_markdown_report(results)
+
+    def _generate_comprehensive_markdown_report(self, results: dict):
+        """Genera report markdown comprensivo di tutti i risultati"""
+        
+        report = [
+            "# 🔒 AWS Infrastructure Complete Security & Optimization Audit",
+            "",
+            f"**Audit Date**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            f"**Regions Analyzed**: {', '.join(self.config.regions)}",
+            "",
+            "## 📊 Executive Summary",
+            ""
+        ]
+        
+        summary = results["summary"]
+        
+        # Overall security status
+        if summary["standard_critical"] > 0 or summary["total_sg_critical"] > 0:
+            status = "🚨 CRITICAL ISSUES FOUND"
+        elif summary["standard_high"] > 0:
+            status = "⚠️ HIGH PRIORITY ISSUES"
+        else:
+            status = "✅ GOOD SECURITY POSTURE"
+        
+        report.extend([
+            f"**Security Status**: {status}",
+            "",
+            "### 🎯 Key Metrics",
+            "",
+            f"- **Standard Security Findings**: {summary['standard_critical'] + summary['standard_high'] + summary['standard_medium'] + summary['standard_low']}",
+            f"  - 🔴 Critical: {summary['standard_critical']}",
+            f"  - 🟠 High: {summary['standard_high']}",
+            f"  - 🟡 Medium: {summary['standard_medium']}",
+            f"  - 🔵 Low: {summary['standard_low']}",
+            "",
+            f"- **Security Groups Issues**: {summary['total_sg_issues']}",
+            f"  - 🚨 Critical SG Issues: {summary['total_sg_critical']}",
+            "",
+            f"- **Cost Optimization Opportunities**: {summary['total_cost_optimizations']}",
+            f"- **Infrastructure Cleanup Items**: {summary['total_cleanup_items']}",
+            ""
+        ])
+        
+        # Cost savings summary
+        cost_results = results.get("cost_analysis", {})
+        cleanup_results = results.get("cleanup_plan", {})
+        
+        total_annual_savings = 0
+        cleanup_annual_savings = 0
+        
+        for region_data in cost_results.values():
+            total_annual_savings += region_data.get("potential_annual_savings", 0)
+        
+        for region_data in cleanup_results.values():
+            cleanup_annual_savings += region_data.get("estimated_annual_savings", 0)
+        
+        if total_annual_savings > 0 or cleanup_annual_savings > 0:
+            report.extend([
+                "### 💰 Cost Optimization Potential",
+                "",
+                f"- **Advanced Cost Analysis**: ${total_annual_savings:.2f}/year",
+                f"- **Infrastructure Cleanup**: ${cleanup_annual_savings:.2f}/year",
+                f"- **Total Potential Savings**: ${(total_annual_savings + cleanup_annual_savings):.2f}/year",
+                ""
+            ])
+        
+        # Critical actions
+        if summary["standard_critical"] > 0 or summary["total_sg_critical"] > 0:
+            report.extend([
+                "## 🚨 IMMEDIATE ACTIONS REQUIRED",
+                ""
+            ])
+            
+            if summary["total_sg_critical"] > 0:
+                report.extend([
+                    "### 🛡️ Critical Security Groups Issues",
+                    f"**{summary['total_sg_critical']} critical security exposures found**",
+                    "",
+                    "**Immediate Actions:**",
+                    "1. Run backup: `bash reports/cleanup/1_backup_everything.sh`",
+                    "2. Fix critical SG issues: `bash reports/security_groups/critical_fixes.sh`",
+                    "3. Verify fixes: `bash reports/cleanup/5_verify_cleanup.sh`",
+                    ""
+                ])
+            
+            if summary["standard_critical"] > 0:
+                report.extend([
+                    "### 🔍 Critical Standard Audit Issues",
+                    f"**{summary['standard_critical']} critical findings from standard audit**",
+                    "",
+                    "**Review Details:** `reports/security_audit_report.md`",
+                    ""
+                ])
+        
+        # Implementation roadmap
+        report.extend([
+            "## 📋 Implementation Roadmap",
+            "",
+            "### Phase 1: Immediate (0-24 hours)",
+            "- 💾 **Backup everything**: `bash reports/cleanup/1_backup_everything.sh`"
+        ])
+        
+        if summary["total_sg_critical"] > 0:
+            report.append("- 🚨 **Fix critical SG exposures**: `bash reports/security_groups/critical_fixes.sh`")
+        
+        report.extend([
+            "",
+            "### Phase 2: High Priority (1-7 days)",
+            "- 💰 **Cost optimization**: `bash reports/cleanup/3_cost_optimization.sh`",
+            "- 🛡️ **Security improvements**: Review security groups analysis",
+            "",
+            "### Phase 3: Medium Term (1-4 weeks)",
+            "- 🧹 **Infrastructure cleanup**: `bash reports/cleanup/4_maintenance_tasks.sh`",
+            "- 📊 **Monitoring setup**: Implement continuous monitoring",
+            "",
+            "## 🚀 Next Steps",
+            "",
+            "1. **Review Critical Issues**: Address all critical findings immediately",
+            "2. **Run Dashboard**: `python main.py --dashboard` for interactive analysis",
+            "3. **Implement Fixes**: Follow the phase-by-phase roadmap above",
+            "4. **Monitor Progress**: Re-run audit monthly to track improvements",
+            "",
+            "## 📁 Report Files Generated",
+            "",
+            "- `reports/security_audit_report.md` - Standard security audit",
+            "- `reports/security_groups/` - Security Groups analysis and fixes",
+            "- `reports/cleanup/` - Infrastructure cleanup scripts",
+            "- `reports/comprehensive_audit_summary.json` - Complete data export",
+            "",
+            "---",
+            "",
+            f"**Report Generated**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            f"**AWS Security Auditor Version**: v2.1",
+            ""
+        ])
+        
+        # Save comprehensive report
+        with open("reports/comprehensive_security_report.md", "w") as f:
+            f.write("\n".join(report))
+        
+        print(f"📄 Report comprensivo salvato: reports/comprehensive_security_report.md")
+    
+    async def run_fetch_only(self, force_cleanup: bool = False) -> dict:
+        """Esegue solo il fetch dei dati senza audit"""
+        print("📡 Fetching dati AWS...")
+        start_time = time.time()
+        
+        try:
+            # Pulizia opzionale
+            if force_cleanup:
+                self.cleanup_old_data()
+            
+            # Verifica sistema
+            if not self.optimize_system():
+                return {
+                    "success": False,
+                    "error": "System check failed",
+                    "execution_time": time.time() - start_time
+                }
+            
+            # Fetch
+            await self.fetcher.fetch_all_resources()
+            
+            # Process dei dati anche nel fetch-only
+            print("📊 Processing dati...")
+            self.processor.process_all_data()
+            
+            execution_time = time.time() - start_time
+            
+            print(f"✅ Fetch e processing completati in {execution_time:.2f}s")
+            return {
+                "success": True,
+                "execution_time": execution_time,
+                "regions": self.config.regions
+            }
+        except Exception as e:
+            print(f"❌ Errore durante fetch: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "success": False,
+                "error": str(e),
+                "execution_time": time.time() - start_time
+            }
+    
+    def run_audit_only(self, force_cleanup: bool = False) -> dict:
+        """Esegue solo l'audit sui dati esistenti"""
+        print("🔍 Esecuzione audit sui dati esistenti...")
+        start_time = time.time()
+        
+        try:
+            # Pulizia opzionale
+            if force_cleanup:
+                self.cleanup_old_data()
+            
+            # Verifica che esistano dati da auditare
+            data_dir = Path("data")
+            if not data_dir.exists() or not any(data_dir.glob("*.json")):
+                print("❌ Nessun dato trovato in /data. Eseguire prima 'python main.py --fetch-only'")
+                return {
+                    "success": False,
+                    "error": "No data found",
+                    "execution_time": time.time() - start_time
+                }
+            
+            # Process dei dati se necessario
+            print("📊 Verifica processing dati...")
+            self.processor.process_all_data()
+            
+            all_findings = []
+            
+            for region, engine in self.audit_engines.items():
+                print(f"   🌍 Audit regione {region}...")
+                try:
+                    findings = engine.run_all_audits()
+                    all_findings.extend(findings)
+                except Exception as e:
+                    print(f"   ❌ Errore audit {region}: {e}")
+                    continue
+            
+            summary = self._generate_global_summary(all_findings)
+            execution_time = time.time() - start_time
+            
+            print(f"✅ Audit completato in {execution_time:.2f}s")
+            print(f"   Total Findings: {len(all_findings)}")
+            
+            # Mostra findings critici
+            critical_findings = [f for f in all_findings if f.severity == Severity.CRITICAL]
+            if critical_findings:
+                print(f"\n🚨 {len(critical_findings)} FINDING CRITICI:")
+                for finding in critical_findings[:3]:
+                    print(f"   • {finding.resource_name}: {finding.rule_name}")
+            
+            return {
+                "success": True,
+                "total_findings": len(all_findings),
+                "summary": summary,
