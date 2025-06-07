@@ -1,4 +1,4 @@
-# audit/audit_engine.py
+# audit/audit_engine.py - VERSIONE AGGIORNATA
 from typing import Dict, List, Any, Type
 from audit.base_auditor import BaseAuditor, Finding
 from audit.security_group_auditor import SecurityGroupAuditor
@@ -17,6 +17,15 @@ class AuditEngine:
             "security_groups": SecurityGroupAuditor(region),
             "ec2": EC2Auditor(region),
         }
+        
+        # Prova ad aggiungere advanced SG auditor se disponibile
+        try:
+            from audit.advanced_sg_auditor import AdvancedSecurityGroupAuditor
+            self.auditors["advanced_security_groups"] = AdvancedSecurityGroupAuditor(region)
+            print(f"   ✅ Advanced Security Group Auditor abilitato per {region}")
+        except ImportError:
+            print(f"   ⚠️  Advanced Security Group Auditor non disponibile per {region}")
+        
         self.all_findings: List[Finding] = []
     
     def run_all_audits(self, data_dir: str = "data") -> List[Finding]:
@@ -25,14 +34,35 @@ class AuditEngine:
         
         self.all_findings = []
         
-        # Security Groups Audit
+        # Security Groups Audit Standard
         if "security_groups" in self.auditors:
             sg_data = self._load_audit_data(data_dir, ["sg_raw.json", "eni_raw.json"])
             if sg_data:
-                print("   🛡️  Audit Security Groups...")
+                print("   🛡️  Audit Security Groups standard...")
                 findings = self.auditors["security_groups"].audit(sg_data)
                 self.all_findings.extend(findings)
-                print(f"      └─ {len(findings)} findings trovati")
+                print(f"      └─ {len(findings)} findings standard")
+        
+        # Security Groups Audit Avanzato
+        if "advanced_security_groups" in self.auditors:
+            sg_advanced_data = self._load_audit_data(data_dir, ["sg_raw.json", "eni_raw.json", "ec2_raw.json"])
+            if sg_advanced_data:
+                print("   🛡️  Audit Security Groups avanzato...")
+                try:
+                    advanced_findings = self.auditors["advanced_security_groups"].audit(sg_advanced_data)
+                    self.all_findings.extend(advanced_findings)
+                    print(f"      └─ {len(advanced_findings)} findings avanzati")
+                    
+                    # Ottieni summary ottimizzazioni se disponibile
+                    if hasattr(self.auditors["advanced_security_groups"], 'get_optimization_summary'):
+                        optimization_summary = self.auditors["advanced_security_groups"].get_optimization_summary()
+                        print(f"      └─ {optimization_summary.get('total_recommendations', 0)} raccomandazioni ottimizzazione")
+                        
+                        # Salva raccomandazioni avanzate
+                        self._save_advanced_sg_results(optimization_summary)
+                        
+                except Exception as e:
+                    print(f"      ❌ Errore audit SG avanzato: {e}")
         
         # EC2 Audit
         if "ec2" in self.auditors:
@@ -76,6 +106,31 @@ class AuditEngine:
         
         return combined_data
     
+    def _save_advanced_sg_results(self, optimization_summary: Dict[str, Any]):
+        """Salva risultati avanzati Security Groups"""
+        os.makedirs("reports/security_groups", exist_ok=True)
+        
+        # Salva summary ottimizzazioni
+        with open("reports/security_groups/advanced_optimization_summary.json", "w") as f:
+            json.dump({
+                "timestamp": datetime.now().isoformat(),
+                "region": self.region,
+                "optimization_summary": optimization_summary
+            }, f, indent=2)
+        
+        # Genera script di cleanup se disponibile
+        if "advanced_security_groups" in self.auditors:
+            try:
+                advanced_auditor = self.auditors["advanced_security_groups"]
+                if hasattr(advanced_auditor, 'generate_cleanup_script'):
+                    cleanup_script = advanced_auditor.generate_cleanup_script({})
+                    with open("reports/security_groups/advanced_cleanup.sh", "w") as f:
+                        f.write(cleanup_script)
+                    os.chmod("reports/security_groups/advanced_cleanup.sh", 0o755)
+                    print(f"      └─ Script cleanup salvato: reports/security_groups/advanced_cleanup.sh")
+            except Exception as e:
+                print(f"      ⚠️  Errore generazione script cleanup: {e}")
+    
     def _generate_summary(self) -> str:
         """Genera summary dei findings"""
         summary = {"critical": 0, "high": 0, "medium": 0, "low": 0}
@@ -96,7 +151,8 @@ class AuditEngine:
                 "scan_time": datetime.now().isoformat(),
                 "region": self.region,
                 "total_findings": len(self.all_findings),
-                "summary": self._generate_summary()
+                "summary": self._generate_summary(),
+                "advanced_sg_audit": "advanced_security_groups" in self.auditors
             },
             "findings": [f.to_dict() for f in self.all_findings]
         }
@@ -113,7 +169,15 @@ class AuditEngine:
             f.write("# 🔒 AWS Security Audit Report\n\n")
             f.write(f"**Scan Date**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"**Region**: {self.region}\n")
-            f.write(f"**Total Findings**: {len(self.all_findings)}\n\n")
+            f.write(f"**Total Findings**: {len(self.all_findings)}\n")
+            
+            # Indica se audit avanzato è stato eseguito
+            if "advanced_security_groups" in self.auditors:
+                f.write(f"**Advanced Security Groups Analysis**: ✅ Enabled\n")
+            else:
+                f.write(f"**Advanced Security Groups Analysis**: ❌ Not Available\n")
+            
+            f.write("\n")
             
             # Summary per severity
             severity_counts = {}
@@ -145,6 +209,14 @@ class AuditEngine:
                     if finding.remediation:
                         f.write(f"**Remediation**: `{finding.remediation}`\n")
                     f.write(f"**Compliance**: {', '.join(finding.compliance_frameworks)}\n\n")
+            
+            # Sezione Advanced SG se disponibile
+            if "advanced_security_groups" in self.auditors:
+                f.write("\n## 🛡️ Advanced Security Groups Analysis\n\n")
+                f.write("Additional advanced analysis has been performed on Security Groups.\n")
+                f.write("Check the following files for detailed optimization recommendations:\n\n")
+                f.write("- `reports/security_groups/advanced_optimization_summary.json`\n")
+                f.write("- `reports/security_groups/advanced_cleanup.sh`\n\n")
     
     def get_findings_by_severity(self, severity: Severity) -> List[Finding]:
         """Ritorna findings per severity specifica"""
@@ -164,4 +236,3 @@ class AuditEngine:
         
         resource_types = service_map.get(service, [service])
         return [f for f in self.all_findings if f.resource_type in resource_types]
-    
