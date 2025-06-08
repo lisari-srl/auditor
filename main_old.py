@@ -160,184 +160,7 @@ class AWSAuditor:
             "analysis_phases": 6,
             "regions_analyzed": len(self.config.regions)
         }
-        
-    def _save_comprehensive_results(self, results):
-        """Salva risultati comprensivi di audit e ottimizzazioni"""
-        os.makedirs("reports", exist_ok=True)
-        
-        with open("reports/full_audit_results.json", "w") as f:
-            # Converte findings in dict per serializzazione
-            if "standard_findings" in results:
-                results["standard_findings"] = [
-                    f.to_dict() if hasattr(f, "to_dict") else f 
-                    for f in results["standard_findings"]
-                ]
-            
-            json.dump(results, f, default=str, indent=2)
-    
-    async def run_fetch_only(self, force_cleanup: bool = True) -> Dict:
-        """Esegue solo fetch dei dati"""
-        print("📡 Avvio fetch dati AWS...")
-        start_time = time.time()
 
-        try:
-            # Pulizia se richiesta
-            if force_cleanup:
-                self.cleanup_old_data()
-            
-            if not self.optimize_system():
-                return {
-                    "success": False,
-                    "error": "System optimization failed",
-                    "execution_time": time.time() - start_time
-                }
-            
-            # Fetch dati
-            fetch_start = time.time()
-            
-            # Usa Extended Fetcher se disponibile
-            try:
-                from utils.extended_aws_fetcher import ExtendedAWSFetcher
-                extended_fetcher = ExtendedAWSFetcher(self.config)
-                await extended_fetcher.fetch_all_extended_resources()
-                print("   ✅ Extended fetch completato")
-            except ImportError:
-                print("   ⚠️  Extended fetcher non disponibile, uso fetch standard")
-                await self.fetcher.fetch_all_resources()
-            except Exception as e:
-                print(f"   ⚠️  Errore extended fetch: {e}, uso fetch standard")
-                await self.fetcher.fetch_all_resources()
-            
-            fetch_time = time.time() - fetch_start
-            print(f"   ✅ Fetch completo in {fetch_time:.2f}s")
-            
-            total_time = time.time() - start_time
-            print(f"✅ Fetch completato in {total_time:.2f}s")
-            
-            return {
-                "success": True,
-                "execution_time": total_time
-            }
-        except Exception as e:
-            print(f"❌ Errore durante fetch: {e}")
-            import traceback
-            traceback.print_exc()
-            return {
-                "success": False,
-                "error": str(e),
-                "execution_time": time.time() - start_time
-            }
-    
-    def run_audit_only(self, force_cleanup: bool = True) -> Dict:
-        """Esegue solo audit su dati esistenti"""
-        print("🔍 Avvio audit su dati esistenti...")
-        start_time = time.time()
-
-        try:
-            # Pulizia se richiesta (minima)
-            if force_cleanup:
-                # Pulisci solo cache e file temporanei, non i dati
-                temp_dirs = [".cache", "temp", "__pycache__"]
-                for temp_dir in temp_dirs:
-                    if os.path.exists(temp_dir):
-                        try:
-                            if temp_dir == "__pycache__":
-                                for root, dirs, files in os.walk("."):
-                                    for dir_name in dirs:
-                                        if dir_name == "__pycache__":
-                                            full_path = os.path.join(root, dir_name)
-                                            shutil.rmtree(full_path, ignore_errors=True)
-                            else:
-                                shutil.rmtree(temp_dir, ignore_errors=True)
-                        except Exception as e:
-                            print(f"   ⚠️  Impossibile pulire {temp_dir}: {e}")
-            
-            # Verifica esistenza dati
-            if not os.path.exists("data"):
-                return {
-                    "success": False,
-                    "error": "No data directory found. Run fetch first.",
-                    "execution_time": time.time() - start_time
-                }
-            
-            if not any(os.path.isfile(os.path.join("data", f)) for f in os.listdir("data") if f.endswith(".json")):
-                return {
-                    "success": False,
-                    "error": "No data files found. Run fetch first.",
-                    "execution_time": time.time() - start_time
-                }
-            
-            # Process dati
-            print("📊 Processing dati...")
-            process_start = time.time()
-            processor = DataProcessor()
-            if not processor.process_all_data():
-                print("   ⚠️  Processing completato con errori")
-            process_time = time.time() - process_start
-            print(f"   ✅ Processing completato in {process_time:.2f}s")
-            
-            # Esegui audit di sicurezza
-            print("🔍 Esecuzione audit di sicurezza...")
-            audit_start = time.time()
-            all_findings = []
-            
-            for region, engine in self.audit_engines.items():
-                print(f"   🌍 Audit regione {region}...")
-                try:
-                    findings = engine.run_all_audits()
-                    all_findings.extend(findings)
-                except Exception as e:
-                    print(f"   ❌ Errore audit {region}: {e}")
-                    continue
-            
-            audit_time = time.time() - audit_start
-            print(f"   ✅ Audit completato in {audit_time:.2f}s")
-            
-            # Analisi aggiuntive se disponibili
-            try:
-                from utils.simple_sg_optimizer import analyze_security_groups_simple
-                print("🛡️  Analisi avanzata Security Groups...")
-                all_data = self._load_all_processed_data()
-                for region in self.config.regions:
-                    sg_results = analyze_security_groups_simple(all_data, region)
-                    print(f"   ✅ Analisi SG {region}: {sg_results.get('total_findings', 0)} findings")
-            except ImportError:
-                print("   ⚠️  SG optimizer non disponibile, skip")
-            except Exception as e:
-                print(f"   ⚠️  Errore analisi SG: {e}")
-            
-            # Cleanup infrastruttura se disponibile
-            try:
-                from utils.simple_cleanup_orchestrator import create_infrastructure_cleanup_plan
-                print("🧹 Pianificazione cleanup infrastruttura...")
-                all_data = self._load_all_processed_data()
-                for region in self.config.regions:
-                    cleanup_results = create_infrastructure_cleanup_plan(all_data, region)
-                    print(f"   ✅ Piano cleanup {region}: {cleanup_results.get('total_items', 0)} items")
-            except ImportError:
-                print("   ⚠️  Cleanup orchestrator non disponibile, skip")
-            except Exception as e:
-                print(f"   ⚠️  Errore piano cleanup: {e}")
-            
-            total_time = time.time() - start_time
-            print(f"✅ Audit completato in {total_time:.2f}s - {len(all_findings)} findings totali")
-            
-            return {
-                "success": True,
-                "total_findings": len(all_findings),
-                "execution_time": total_time,
-                "critical_findings": len([f for f in all_findings if f.severity.value == "critical"])
-            }
-        except Exception as e:
-            print(f"❌ Errore durante audit: {e}")
-            import traceback
-            traceback.print_exc()
-            return {
-                "success": False,
-                "error": str(e),
-                "execution_time": time.time() - start_time
-            }
-            
     async def run_full_audit(self, use_cache: bool = True, force_cleanup: bool = True) -> Dict:
         """Esegue audit completo"""
         print("🚀 Avvio AWS Security Audit Completo...")
@@ -579,26 +402,36 @@ class AWSAuditor:
                 "execution_time": time.time() - start_time
             }
     
-    def start_dashboard(self, host: str = "localhost", port: int = 8501):
-        """Avvia il dashboard Streamlit"""
+    def start_dashboard(self, host: str = "localhost"):
+        """Avvia il dashboard Streamlit con FETCH e AUDIT automatici"""
         print("🚀 Avvio dashboard Streamlit...")
-        
+
         # Verifica che streamlit sia installato
         try:
             import streamlit
         except ImportError:
             print("❌ Streamlit non trovato. Installare con: pip install streamlit")
             return
-        
+
+        # Esegui FETCH e AUDIT prima di avviare la dashboard
+        print("📡 Eseguo FETCH e AUDIT prima di avviare la dashboard...")
+        try:
+            asyncio.run(self.run_full_audit(use_cache=True, force_cleanup=True))
+            print("✅ FETCH e AUDIT completati!")
+        except Exception as e:
+            print(f"⚠️ Errore durante FETCH e AUDIT: {e}")
+            print("   La dashboard potrebbe mostrare dati incompleti o vecchi.")
+
         # Verifica che esistano dati
         data_dir = Path("data")
         if not data_dir.exists() or not any(data_dir.glob("*.json")):
-            print("⚠️  Nessun dato trovato. Il dashboard sarà vuoto.")
-            print("   Suggerimento: eseguire prima 'python main.py --fetch-only'")
-        
+            print("⚠️ Nessun dato trovato. Il dashboard sarà vuoto.")
+            print("   Suggerimento: eseguire manualmente 'python main.py --fetch-only'")
+
+        # Avvia Streamlit
         import subprocess
         import socket
-        
+
         def is_port_available(port, host="localhost"):
             """Verifica se una porta è disponibile"""
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -607,54 +440,70 @@ class AWSAuditor:
                     return True
                 except:
                     return False
-        
+
         # Trova una porta disponibile
-        base_port = port
-        current_port = base_port
-        
+        base_port = int(os.getenv("STREAMLIT_SERVER_PORT", "8501"))
+        port = base_port
+
         for i in range(10):  # Prova 10 porte consecutive
-            if is_port_available(current_port, host):
+            if is_port_available(port, host):
                 break
-            current_port += 1
+            port += 1
         else:
             print(f"❌ Nessuna porta disponibile da {base_port} a {base_port + 9}")
             return
-        
-        if current_port != base_port:
-            print(f"⚠️  Porta {base_port} occupata, uso porta {current_port}")
-        
+
+        if port != base_port:
+            print(f"⚠️ Porta {base_port} occupata, uso porta {port}")
+
         try:
             # Determina l'indirizzo di binding
             server_address = host if host != "localhost" else "localhost"
-            
-            print(f"🌐 Dashboard disponibile su: http://localhost:{current_port}")
+
+            print(f"🌐 Dashboard disponibile su: http://localhost:{port}")
             if host != "localhost":
-                print(f"🌐 Accessibile anche da: http://{host}:{current_port}")
-            
-            # Ottieni path assoluto alla dashboard
-            dashboard_path = Path(__file__).parent / "dashboard" / "app.py"
-            dashboard_path = dashboard_path.resolve()
-            
+                print(f"🌐 Accessibile anche da: http://{host}:{port}")
+
             # Comando streamlit ottimizzato
             cmd = [
-                "streamlit", "run", str(dashboard_path),
-                "--server.port", str(current_port),
+                "streamlit", "run", "dashboard/app.py",
+                "--server.port", str(port),
                 "--server.address", server_address,
+                "--server.headless", "true",
                 "--browser.gatherUsageStats", "false"
             ]
-            
-            # Esegui in directory corrente per garantire accesso a file
-            subprocess.run(cmd, check=True, cwd=str(Path(__file__).parent))
-            
+
+            # Se è localhost, non specificare --server.enableXsrfProtection
+            if host == "localhost":
+                cmd.extend(["--server.enableXsrfProtection", "false"])
+
+            subprocess.run(cmd, check=True)
+
         except subprocess.CalledProcessError as e:
-            print(f"❌ Errore avvio dashboard: {e}")
-            print("\n🔧 Prova manualmente:")
-            print(f"   cd {Path(__file__).parent} && streamlit run dashboard/app.py --server.port {current_port}")
+            error_msg = str(e)
+            if "Port" in error_msg and "already in use" in error_msg:
+                print(f"❌ Porta {port} ancora occupata. Prova manualmente:")
+                print(f"   streamlit run dashboard/app.py --server.port {port + 1} --server.address localhost")
+            else:
+                print(f"❌ Errore avvio dashboard: {e}")
+                print("\n🔧 Prova manualmente:")
+                print(f"   streamlit run dashboard/app.py --server.port {port} --server.address localhost")
         except FileNotFoundError:
             print("❌ Comando streamlit non trovato nel PATH")
             print("   Installare con: pip install streamlit")
         except KeyboardInterrupt:
             print("\n🛑 Dashboard fermato dall'utente")
+    
+    def _generate_global_summary(self, findings: List) -> dict:
+        """Genera summary globale di tutti i findings"""
+        summary = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+        
+        for finding in findings:
+            severity_key = finding.severity.value if hasattr(finding.severity, 'value') else str(finding.severity)
+            if severity_key in summary:
+                summary[severity_key] += 1
+        
+        return summary
 
 
 def main():
@@ -728,12 +577,6 @@ Esempi di utilizzo:
         default="localhost",
         help="Host per il dashboard (default: localhost, usa 0.0.0.0 per accesso rete)"
     )
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=8501,
-        help="Porta per il dashboard (default: 8501)"
-    )
     
     args = parser.parse_args()
     
@@ -768,7 +611,7 @@ Esempi di utilizzo:
         
         # Esegui operazione richiesta
         if args.dashboard:
-            auditor.start_dashboard(host=args.host, port=args.port)
+            auditor.start_dashboard(host=args.host)
         elif args.fetch_only:
             result = asyncio.run(auditor.run_fetch_only(force_cleanup=force_cleanup))
             sys.exit(0 if result["success"] else 1)
@@ -801,7 +644,3 @@ Esempi di utilizzo:
         import traceback
         traceback.print_exc()
         sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()
