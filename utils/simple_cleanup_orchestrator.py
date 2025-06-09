@@ -41,7 +41,7 @@ class SimpleCleanupOrchestrator:
             "estimated_annual_savings": self.total_estimated_savings,
             "plan": plan,
             "scripts": scripts,
-            "items}": self.cleanup_items
+            "items": self.cleanup_items
         }
     
     def _analyze_ec2_cleanup(self, audit_data: Dict[str, Any]):
@@ -59,7 +59,7 @@ class SimpleCleanupOrchestrator:
                 "type": "ec2_stopped",
                 "resource_id": instance.get("InstanceId"),
                 "resource_name": instance.get("Name", "Unknown"),
-                "description": f}"EC2 instance '{instance.get('Name')}' has been stopped",
+                "description": f"EC2 instance '{instance.get('Name')}' has been stopped",
                 "action": "Review and terminate if not needed",
                 "priority": "medium",
                 "estimated_monthly_savings": 0,  # No cost while stopped, but potential cleanup
@@ -89,7 +89,7 @@ class SimpleCleanupOrchestrator:
                         "type": "ec2_rightsize",
                         "resource_id": instance.get("InstanceId"),
                         "resource_name": instance.get("Name", "Unknown"),
-                        "description": f}"Instance '{instance.get('Name')}' might be oversized ({instance_type})",
+                        "description": f"Instance '{instance.get('Name')}' might be oversized ({instance_type})",
                         "action": f"Consider downsizing to {smaller_type}",
                         "priority": "low",
                         "estimated_monthly_savings": savings,
@@ -119,7 +119,7 @@ class SimpleCleanupOrchestrator:
                     self.cleanup_items.append({
                         "type": "ebs_unattached",
                         "resource_id": volume.get("VolumeId"),
-                        "resource_name": f}"EBS Volume ({size_gb}GB)",
+                        "resource_name": f"EBS Volume ({size_gb}GB)",
                         "description": f"Unattached EBS volume ({size_gb}GB, {volume_type})",
                         "action": "Create snapshot and delete if not needed",
                         "priority": "high",
@@ -152,7 +152,7 @@ class SimpleCleanupOrchestrator:
                 self.cleanup_items.append({
                     "type": "old_snapshots",
                     "resource_id": "multiple_snapshots",
-                    "resource_name": f}"{old_snapshots} EBS snapshots",
+                    "resource_name": f"{old_snapshots} EBS snapshots",
                     "description": f"Found {old_snapshots} EBS snapshots that might be old",
                     "action": "Review and delete unnecessary snapshots",
                     "priority": "low",
@@ -184,7 +184,7 @@ class SimpleCleanupOrchestrator:
                 self.cleanup_items.append({
                     "type": "unused_eips",
                     "resource_id": "multiple_eips",
-                    "resource_name": f}"{len(unassociated_eips)} Elastic IPs",
+                    "resource_name": f"{len(unassociated_eips)} Elastic IPs",
                     "description": f"{len(unassociated_eips)} unassociated Elastic IPs",
                     "action": "Release unused Elastic IPs",
                     "priority": "high",
@@ -213,7 +213,7 @@ class SimpleCleanupOrchestrator:
                 self.cleanup_items.append({
                     "type": "review_load_balancers",
                     "resource_id": "multiple_lbs",
-                    "resource_name": f}"{total_lbs} Load Balancers",
+                    "resource_name": f"{total_lbs} Load Balancers",
                     "description": f"Review {total_lbs} load balancers for utilization",
                     "action": "Review load balancers and consolidate if possible",
                     "priority": "medium",
@@ -237,13 +237,7 @@ class SimpleCleanupOrchestrator:
             self.cleanup_items.append({
                 "type": "unused_security_groups",
                 "resource_id": "multiple_sgs",
-        # Unused security groups
-        unused_sgs = sg_data.get("unused", [])
-        if unused_sgs:
-            self.cleanup_items.append({
-                "type": "unused_security_groups",
-                "resource_id": "multiple_sgs",
-                "resource_name": f}"{len(unused_sgs)} Security Groups",
+                "resource_name": f"{len(unused_sgs)} Security Groups",
                 "description": f"{len(unused_sgs)} unused Security Groups found",
                 "action": "Remove unused Security Groups",
                 "priority": "medium",
@@ -263,7 +257,7 @@ class SimpleCleanupOrchestrator:
             self.cleanup_items.append({
                 "type": "critical_sg_exposure",
                 "resource_id": "multiple_sgs",
-                "resource_name": f}"{len(critical_ports)} Critical Exposures",
+                "resource_name": f"{len(critical_ports)} Critical Exposures",
                 "description": f"{len(critical_ports)} critical ports exposed to Internet",
                 "action": "URGENT: Restrict critical port access",
                 "priority": "critical",
@@ -287,7 +281,7 @@ class SimpleCleanupOrchestrator:
                 self.cleanup_items.append({
                     "type": "old_amis",
                     "resource_id": "multiple_amis",
-                    "resource_name": f}"{old_amis} AMIs",
+                    "resource_name": f"{old_amis} AMIs",
                     "description": f"Review {old_amis} custom AMIs for cleanup",
                     "action": "Review and delete unused AMIs",
                     "priority": "low",
@@ -313,7 +307,7 @@ class SimpleCleanupOrchestrator:
                 self.cleanup_items.append({
                     "type": "log_retention",
                     "resource_id": "multiple_log_groups",
-                    "resource_name": f}"{len(no_retention)} Log Groups",
+                    "resource_name": f"{len(no_retention)} Log Groups",
                     "description": f"{len(no_retention)} log groups without retention policy",
                     "action": "Set retention policies to control costs",
                     "priority": "medium",
@@ -335,7 +329,7 @@ class SimpleCleanupOrchestrator:
             "critical": [],
             "high": [],
             "medium": [],
-            "low}": []
+            "low": []
         }
         
         for item in self.cleanup_items:
@@ -355,34 +349,34 @@ class SimpleCleanupOrchestrator:
                     "timeline": "0-24 hours",
                     "items": by_priority["critical"],
                     "count": len(by_priority["critical"]),
-                    "estimated_annual_savings": savings_by_priority.get("critical}", 0)
+                    "estimated_annual_savings": savings_by_priority.get("critical", 0)
                 },
                 "urgent": {
                     "description": "High priority cost savings",
                     "timeline": "1-7 days",
                     "items": by_priority["high"],
                     "count": len(by_priority["high"]),
-                    "estimated_annual_savings": savings_by_priority.get("high}", 0)
+                    "estimated_annual_savings": savings_by_priority.get("high", 0)
                 },
                 "medium_term": {
                     "description": "Medium priority optimizations",
                     "timeline": "1-4 weeks",
                     "items": by_priority["medium"],
                     "count": len(by_priority["medium"]),
-                    "estimated_annual_savings": savings_by_priority.get("medium}", 0)
+                    "estimated_annual_savings": savings_by_priority.get("medium", 0)
                 },
                 "maintenance": {
                     "description": "Low priority maintenance items",
                     "timeline": "1-3 months",
                     "items": by_priority["low"],
                     "count": len(by_priority["low"]),
-                    "estimated_annual_savings": savings_by_priority.get("low}", 0)
+                    "estimated_annual_savings": savings_by_priority.get("low", 0)
                 }
             },
             "total_annual_savings": self.total_estimated_savings,
             "summary": {
                 "total_items": len(self.cleanup_items),
-                "by_priority}": {k: len(v) for k, v in by_priority.items()},
+                "by_priority": {k: len(v) for k, v in by_priority.items()},
                 "high_impact_items": len(by_priority["critical"]) + len(by_priority["high"])
             }
         }
@@ -523,7 +517,7 @@ class SimpleCleanupOrchestrator:
             "2_critical_security_fixes.sh": "\n".join(critical_script),
             "3_cost_optimization.sh": "\n".join(cost_cleanup_script),
             "4_maintenance_tasks.sh": "\n".join(maintenance_script),
-            "5_verify_cleanup.sh": "\n}".join(verify_script)
+            "5_verify_cleanup.sh": "\n".join(verify_script)
         }
     
     def _save_cleanup_plan(self, plan: Dict[str, Any], scripts: Dict[str, str]):
@@ -536,7 +530,7 @@ class SimpleCleanupOrchestrator:
                 "created_date": datetime.now().isoformat(),
                 "region": self.region,
                 "plan": plan,
-                "cleanup_items}": self.cleanup_items
+                "cleanup_items": self.cleanup_items
             }, f, indent=2)
         
         # Salva script
@@ -630,7 +624,7 @@ class SimpleCleanupOrchestrator:
                 "critical": "🚨",
                 "high": "⚠️",
                 "medium": "🔵",
-                "low": "⚪}"
+                "low": "⚪"
             }.get(item.get("priority", "low"), "⚪")
             
             savings = item.get("estimated_monthly_savings", 0)
