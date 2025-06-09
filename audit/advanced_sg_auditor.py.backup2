@@ -1,4 +1,4 @@
-# audit/advanced_sg_auditor.py - VERSIONE CORRETTA
+# audit/advanced_sg_auditor.py
 from audit.base_auditor import BaseAuditor, Finding
 from config.audit_rules import Severity
 from datetime import datetime, timezone
@@ -176,6 +176,7 @@ class AdvancedSecurityGroupAuditor(BaseAuditor):
     
     def _handle_open_ingress(self, sg: Dict, rule: Dict, ip_range: Dict, critical_ports: Dict, usage_map: Dict):
         """Gestisce regole ingress aperte a 0.0.0.0/0"""
+        protocol = rule.get("IpProtocol", "tcp")
         sg_id = sg.get("GroupId")
         sg_name = sg.get("GroupName", sg_id)
         from_port = rule.get("FromPort")
@@ -188,26 +189,18 @@ class AdvancedSecurityGroupAuditor(BaseAuditor):
         recommendations = []
         alternatives = []
         
-        if protocol == "-1":  # All traffic
-            severity = Severity.CRITICAL
-            recommendations.append("Remove all-traffic access from 0.0.0.0/0")
-            alternatives.extend(["Use specific ports", "Implement WAF", "Use VPC peering"])
-        elif from_port is not None and to_port is not None:
-            # Fixed severity comparison
+if protocol == "-1":  # All traffic
+    severity = Severity.CRITICAL
+    recommendations.append("Remove all-traffic access from 0.0.0.0/0")
+    alternatives.extend(["Use specific ports", "Implement WAF", "Use VPC peering"])
+elif from_port is not None and to_port is not None:
+    for port in range(from_port, to_port + 1):
+        if port in critical_ports:
+            port_info = critical_ports[port]
             severity_order = [Severity.LOW, Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL]
-            current_severity_index = severity_order.index(severity)
-            
-            for port in range(from_port, to_port + 1):
-                if port in critical_ports:
-                    port_info = critical_ports[port]
-                    port_severity_index = severity_order.index(port_info["severity"])
-                    
-                    # Fix: Confronto corretto delle severity
-                    if port_severity_index > current_severity_index:
-                        severity = port_info["severity"]
-                        current_severity_index = port_severity_index
-                    
-                    alternatives.extend(port_info["alternatives"])
+            if severity_order.index(port_info["severity"]) > severity_order.index(severity):
+                severity = port_info["severity"]
+            alternatives.extend(port_info["alternatives"])
         
         # Controlla se è veramente necessario
         usage = usage_map.get(sg_id, {})
@@ -228,7 +221,7 @@ class AdvancedSecurityGroupAuditor(BaseAuditor):
         if protocol == "-1":
             port_desc = "All ports"
         
-        finding_desc = f"Security Group '{sg_name}' allows {protocol} traffic on {port_desc} from 0.0.0.0/0"
+        finding_desc = f"Security Group '{sg_name}' allows {rule.get("IpProtocol", "tcp")} traffic on {port_desc} from 0.0.0.0/0"
         if description:
             finding_desc += f" ({description})"
         
@@ -236,7 +229,7 @@ class AdvancedSecurityGroupAuditor(BaseAuditor):
         if alternatives:
             recommendation += f". Alternatives: {', '.join(set(alternatives))}"
         
-        remediation_cmd = f"aws ec2 revoke-security-group-ingress --group-id {sg_id} --protocol {protocol}"
+        remediation_cmd = f"aws ec2 revoke-security-group-ingress --group-id {sg_id} --protocol {rule.get('IpProtocol', 'tcp')}"
         if from_port is not None:
             remediation_cmd += f" --port {from_port}"
         remediation_cmd += " --cidr 0.0.0.0/0"
@@ -278,6 +271,7 @@ class AdvancedSecurityGroupAuditor(BaseAuditor):
     
     def _handle_broad_cidr(self, sg: Dict, rule: Dict, ip_range: Dict, usage_map: Dict):
         """Gestisce CIDR troppo ampi"""
+        protocol = rule.get("IpProtocol", "tcp")
         sg_id = sg.get("GroupId")
         sg_name = sg.get("GroupName", sg_id)
         cidr = ip_range.get("CidrIp")
@@ -300,7 +294,7 @@ class AdvancedSecurityGroupAuditor(BaseAuditor):
                     severity=Severity.MEDIUM,
                     region=self.region,
                     recommendation="Restringere il CIDR range ai soli IP necessari",
-                    remediation=f"aws ec2 revoke-security-group-ingress --group-id {sg_id} --protocol {protocol} --port {from_port} --cidr {cidr}",
+                    remediation=f"aws ec2 revoke-security-group-ingress --group-id {sg_id} --protocol {rule.get('IpProtocol', 'tcp')} --port {from_port} --cidr {cidr}",
                     compliance_frameworks=["CIS", "Best Practices"],
                     metadata={
                         "cidr": cidr,
@@ -315,6 +309,7 @@ class AdvancedSecurityGroupAuditor(BaseAuditor):
     
     def _analyze_egress_rule(self, sg: Dict, rule: Dict, usage_map: Dict):
         """Analizza regole egress"""
+        protocol = rule.get("IpProtocol", "tcp")
         sg_id = sg.get("GroupId")
         sg_name = sg.get("GroupName", sg_id)
         protocol = rule.get("IpProtocol")
@@ -347,11 +342,6 @@ class AdvancedSecurityGroupAuditor(BaseAuditor):
                         },
                         timestamp=datetime.now(timezone.utc)
                     ))
-    
-    def _analyze_sg_reference(self, sg: Dict, rule: Dict, sg_ref: Dict, usage_map: Dict):
-        """Analizza riferimenti ad altri Security Groups"""
-        # Placeholder per analisi avanzata di SG references
-        pass
     
     def _check_redundant_rules(self, sg: Dict):
         """Verifica regole ridondanti"""
@@ -428,11 +418,6 @@ class AdvancedSecurityGroupAuditor(BaseAuditor):
                 },
                 timestamp=datetime.now(timezone.utc)
             ))
-    
-    def _check_default_deny_policy(self, sg: Dict):
-        """Verifica policy default deny"""
-        # Placeholder per check di default deny policy
-        pass
     
     def _analyze_optimization_opportunities(self, sg: Dict, usage_map: Dict):
         """Analizza opportunità di ottimizzazione"""
@@ -635,7 +620,7 @@ class AdvancedSecurityGroupAuditor(BaseAuditor):
         ip_ranges = sorted([ip.get("CidrIp", "") for ip in rule.get("IpRanges", [])])
         sg_refs = sorted([sg.get("GroupId", "") for sg in rule.get("UserIdGroupPairs", [])])
         
-        return f"{protocol}:{from_port}:{to_port}:{','.join(ip_ranges)}:{','.join(sg_refs)}"
+        return f"{rule.get("IpProtocol", "tcp")}:{from_port}:{to_port}:{','.join(ip_ranges)}:{','.join(sg_refs)}"
     
     def _rules_overlap(self, rule1: Dict, rule2: Dict) -> bool:
         """Verifica se due regole si sovrappongono"""
@@ -670,7 +655,7 @@ class AdvancedSecurityGroupAuditor(BaseAuditor):
         for sg in rule.get("UserIdGroupPairs", []):
             sources.append(sg.get("GroupId", ""))
         
-        return f"{protocol}:{port_str} from {','.join(sources)}"
+        return f"{rule.get("IpProtocol", "tcp")}:{port_str} from {','.join(sources)}"
     
     def _is_default_rule(self, rule: Dict) -> bool:
         """Verifica se è una regola default del Security Group"""
@@ -703,7 +688,7 @@ class AdvancedSecurityGroupAuditor(BaseAuditor):
         
         # Unused Security Groups
         for recommendation in self.optimization_recommendations:
-            if recommendation.get("type") == "unused_sg":
+            if recommendation["type"] == "unused_sg":
                 sg_id = recommendation["resource_id"]
                 script_lines.extend([
                     f"# Remove unused Security Group {sg_id}",
@@ -714,7 +699,7 @@ class AdvancedSecurityGroupAuditor(BaseAuditor):
         
         # Consolidation opportunities
         for recommendation in self.optimization_recommendations:
-            if recommendation.get("type") == "consolidation_opportunity":
+            if recommendation["type"] == "consolidation_opportunity":
                 script_lines.extend([
                     "# Consolidation opportunity found",
                     f"# Primary SG: {recommendation['primary_sg']['id']}",

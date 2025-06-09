@@ -1,4 +1,4 @@
-# audit/advanced_sg_auditor.py - VERSIONE CORRETTA
+# audit/advanced_sg_auditor.py
 from audit.base_auditor import BaseAuditor, Finding
 from config.audit_rules import Severity
 from datetime import datetime, timezone
@@ -188,26 +188,18 @@ class AdvancedSecurityGroupAuditor(BaseAuditor):
         recommendations = []
         alternatives = []
         
-        if protocol == "-1":  # All traffic
-            severity = Severity.CRITICAL
-            recommendations.append("Remove all-traffic access from 0.0.0.0/0")
-            alternatives.extend(["Use specific ports", "Implement WAF", "Use VPC peering"])
-        elif from_port is not None and to_port is not None:
-            # Fixed severity comparison
+if protocol == "-1":  # All traffic
+    severity = Severity.CRITICAL
+    recommendations.append("Remove all-traffic access from 0.0.0.0/0")
+    alternatives.extend(["Use specific ports", "Implement WAF", "Use VPC peering"])
+elif from_port is not None and to_port is not None:
+    for port in range(from_port, to_port + 1):
+        if port in critical_ports:
+            port_info = critical_ports[port]
             severity_order = [Severity.LOW, Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL]
-            current_severity_index = severity_order.index(severity)
-            
-            for port in range(from_port, to_port + 1):
-                if port in critical_ports:
-                    port_info = critical_ports[port]
-                    port_severity_index = severity_order.index(port_info["severity"])
-                    
-                    # Fix: Confronto corretto delle severity
-                    if port_severity_index > current_severity_index:
-                        severity = port_info["severity"]
-                        current_severity_index = port_severity_index
-                    
-                    alternatives.extend(port_info["alternatives"])
+            if severity_order.index(port_info["severity"]) > severity_order.index(severity):
+                severity = port_info["severity"]
+            alternatives.extend(port_info["alternatives"])
         
         # Controlla se è veramente necessario
         usage = usage_map.get(sg_id, {})
@@ -348,11 +340,6 @@ class AdvancedSecurityGroupAuditor(BaseAuditor):
                         timestamp=datetime.now(timezone.utc)
                     ))
     
-    def _analyze_sg_reference(self, sg: Dict, rule: Dict, sg_ref: Dict, usage_map: Dict):
-        """Analizza riferimenti ad altri Security Groups"""
-        # Placeholder per analisi avanzata di SG references
-        pass
-    
     def _check_redundant_rules(self, sg: Dict):
         """Verifica regole ridondanti"""
         sg_id = sg.get("GroupId")
@@ -428,11 +415,6 @@ class AdvancedSecurityGroupAuditor(BaseAuditor):
                 },
                 timestamp=datetime.now(timezone.utc)
             ))
-    
-    def _check_default_deny_policy(self, sg: Dict):
-        """Verifica policy default deny"""
-        # Placeholder per check di default deny policy
-        pass
     
     def _analyze_optimization_opportunities(self, sg: Dict, usage_map: Dict):
         """Analizza opportunità di ottimizzazione"""
@@ -703,7 +685,7 @@ class AdvancedSecurityGroupAuditor(BaseAuditor):
         
         # Unused Security Groups
         for recommendation in self.optimization_recommendations:
-            if recommendation.get("type") == "unused_sg":
+            if recommendation["type"] == "unused_sg":
                 sg_id = recommendation["resource_id"]
                 script_lines.extend([
                     f"# Remove unused Security Group {sg_id}",
@@ -714,7 +696,7 @@ class AdvancedSecurityGroupAuditor(BaseAuditor):
         
         # Consolidation opportunities
         for recommendation in self.optimization_recommendations:
-            if recommendation.get("type") == "consolidation_opportunity":
+            if recommendation["type"] == "consolidation_opportunity":
                 script_lines.extend([
                     "# Consolidation opportunity found",
                     f"# Primary SG: {recommendation['primary_sg']['id']}",
