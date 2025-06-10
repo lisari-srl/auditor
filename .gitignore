@@ -1,8 +1,14 @@
-# Python
+# AWS Infrastructure Security Auditor v2.1 - Git Ignore
+# Updated: 2024-12-19
+
+# ===== PYTHON =====
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+
+# Distribution / packaging
 .Python
 build/
 develop-eggs/
@@ -16,42 +22,421 @@ parts/
 sdist/
 var/
 wheels/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
-# Virtual Environment
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff
+instance/
+.webassets-cache
+
+# Scrapy stuff
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+.pybuilder/
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# poetry
+poetry.lock
+
+# pdm
+.pdm.toml
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Virtual environments
+.env
+.venv
+env/
 venv/
 ENV/
-env/
+env.bak/
+venv.bak/
 
-# AWS Auditor specific
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# ===== AWS AUDITOR SPECIFIC =====
+# Audit data and cache
 data/
 .cache/
 reports/
 temp_network.html
 config.json
 
-# Environment variables
-.env
+# AWS credentials and config (CRITICAL - NEVER COMMIT)
+.aws/
+credentials
+config
+*.pem
+*.key
+*.p12
+*.pfx
 
-# IDE
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+.env.production
+.env.staging
+.env.development
+secrets.yaml
+secrets.yml
+secret-*.json
+
+# Configuration files with sensitive data
+config/production.json
+config/staging.json
+config/local.json
+audit_config_production.yaml
+audit_config_staging.yaml
+
+# Backup files created by auditor
+backup_*/
+aws_backup_*/
+sg_backup_*/
+*_backup.json
+*_backup.tar.gz
+
+# Generated scripts and outputs
+cleanup_*.sh
+remediation_*.sh
+audit_*.csv
+audit_*.xlsx
+security_report_*.pdf
+
+# ===== IDE AND EDITORS =====
+# VSCode
 .vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# PyCharm
 .idea/
+*.iml
+*.ipr
+*.iws
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
 *.swp
 *.swo
+*~
 
-# OS
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Atom
+.atom/
+
+# ===== OPERATING SYSTEMS =====
+# macOS
 .DS_Store
-Thumbs.db
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
 
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ===== DATABASES =====
+# SQLite
+*.db
+*.sqlite
+*.sqlite3
+
+# PostgreSQL
+*.dump
+
+# MySQL
+*.sql
+
+# ===== LOGS AND TEMPORARY FILES =====
 # Logs
 *.log
+*.log.*
+logs/
+log/
+audit.log
+audit_*.log
+error.log
+access.log
 
-# pytest
-.pytest_cache/
-htmlcov/
-.coverage
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+tmp/
+temp/
+temporary/
 
-# mypy
-.mypy_cache/
+# Lock files
+*.lock
+.lock
+
+# ===== SECURITY AND CERTIFICATES =====
+# SSL certificates
+*.crt
+*.cer
+*.der
+*.pem
+*.key
+*.p7b
+*.p7c
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.truststore
+
+# SSH keys
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+known_hosts
+
+# GPG
+*.gpg
+*.asc
+secring.*
+
+# ===== CLOUD AND DEPLOYMENT =====
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfplan
+.terraform/
+.terraform.lock.hcl
+
+# CloudFormation
+*.template
+stack-*.json
+
+# Docker
+Dockerfile.local
+docker-compose.override.yml
+.dockerignore.local
+
+# Kubernetes
+*.kubeconfig
+kube-config
+k8s-config
+
+# ===== BACKUP AND ARCHIVES =====
+# Archive files
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+*.war
+*.ear
+*.sar
+*.class
+
+# Backup directories
+backup/
+backups/
+.backup/
+
+# ===== MONITORING AND PROFILING =====
+# Profiling
+.prof
+*.prof
+profile_*/
+
+# Monitoring
+.monitoring/
+metrics/
+
+# Performance
+.perf/
+*.perf
+
+# ===== DOCUMENTATION =====
+# Generated docs
+docs/build/
+docs/_build/
+site/
+
+# Personal notes
+TODO.md
+NOTES.md
+notes.txt
+todo.txt
+
+# ===== SECURITY SCANNING =====
+# Security scan results
+.bandit
+.safety
+.semgrep
+security-scan-*.json
+vulnerability-report-*.json
+
+# ===== PROJECT SPECIFIC EXCLUDES =====
+# Large test files
+test_data_large/
+sample_data/
+mock_data/
+
+# Old versions
+old/
+archive/
+deprecated/
+
+# Research and experiments
+experiments/
+playground/
+scratch/
+
+# ===== KEEP THESE PATTERNS AT THE END =====
+# Never ignore these important files (use ! to negate)
+!.gitkeep
+!.gitattributes
+!.github/
+!requirements*.txt
+!pyproject.toml
+!setup.py
+!setup.cfg
+!MANIFEST.in
+!tox.ini
+
+# But always ignore any secrets even if they match above patterns
+*secret*
+*password*
+*credential*
+*token*
+*api_key*
+*private_key*

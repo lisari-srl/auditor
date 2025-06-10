@@ -1,22 +1,77 @@
-# Core AWS e async
-boto3>=1.28.0
-aioboto3>=11.3.0
-botocore>=1.31.0
+# AWS Infrastructure Security Auditor v2.1 - Dependencies
+# Updated: 2024-12-19
 
-# Dashboard e visualizzazione 
-streamlit>=1.28.0
-plotly>=5.15.0
-pandas>=2.0.0
-pyvis>=0.3.2
-networkx>=3.1
+# ===== CORE AWS & ASYNC =====
+# AWS SDK and async support
+boto3>=1.34.0,<2.0.0
+aioboto3>=12.0.0,<13.0.0
+botocore>=1.34.0,<2.0.0
 
-# Utilità
-click>=8.1.0
-rich>=13.5.0
-python-dateutil>=2.8.0
+# ===== WEB FRAMEWORK & DASHBOARD =====
+# Streamlit for interactive dashboard
+streamlit>=1.29.0,<2.0.0
+# Data visualization and charts
+plotly>=5.17.0,<6.0.0
+pandas>=2.1.0,<3.0.0
+# Network visualization
+pyvis>=0.3.2,<1.0.0
+networkx>=3.2,<4.0.0
 
-# Development (opzionale)
-pytest>=7.4.0
-black>=23.7.0
-flake8>=6.0.0
-mypy>=1.5.0
+# ===== DATA PROCESSING =====
+# Numerical computing
+numpy>=1.24.0,<2.0.0
+# Date/time utilities
+python-dateutil>=2.8.2,<3.0.0
+
+# ===== CLI & USER INTERFACE =====
+# Command line interface
+click>=8.1.7,<9.0.0
+# Rich terminal output
+rich>=13.7.0,<14.0.0
+# Progress bars and status
+tqdm>=4.66.0,<5.0.0
+
+# ===== UTILITIES =====
+# JSON handling and validation
+jsonschema>=4.20.0,<5.0.0
+# Configuration file handling
+PyYAML>=6.0.1,<7.0.0
+# HTTP requests (fallback)
+requests>=2.31.0,<3.0.0
+# Async HTTP client
+aiohttp>=3.9.0,<4.0.0
+
+# ===== SECURITY & VALIDATION =====
+# Certificate validation and security
+certifi>=2023.11.17
+# URL parsing
+urllib3>=2.1.0,<3.0.0
+
+# ===== DEVELOPMENT & TESTING (Optional) =====
+# Testing framework
+pytest>=7.4.0,<8.0.0
+# Code formatting
+black>=23.12.0,<24.0.0
+# Linting
+flake8>=6.1.0,<7.0.0
+# Type checking
+mypy>=1.8.0,<2.0.0
+
+# ===== OPTIONAL ENHANCEMENTS =====
+# Better JSON handling
+orjson>=3.9.0,<4.0.0
+# Configuration management
+python-dotenv>=1.0.0,<2.0.0
+# Caching
+diskcache>=5.6.0,<6.0.0
+
+# ===== COMPATIBILITY NOTES =====
+# Python >= 3.8 required
+# For Python 3.8 compatibility, ensure:
+# - typing_extensions>=4.8.0 (if needed)
+# - importlib-metadata>=6.0.0 (if needed)
+
+# ===== SECURITY NOTES =====
+# All packages pinned to avoid supply chain attacks
+# Regular updates recommended via: pip-audit, safety
+# Consider using pip-tools for lock files in production
