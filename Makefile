@@ -64,6 +64,13 @@ help: ## Mostra questo help
 	@echo "  • $(GREEN)make prod-quick$(NC)      - Test completo veloce"
 	@echo "  • $(GREEN)make prod-single$(NC)     - Test singola regione"
 	@echo ""
+	@echo "$(YELLOW)💰 COMANDI SG + COST ANALYSIS:$(NC)"
+	@echo ""
+	@grep -E '^[a-zA-Z_-]+:.*?## .*💰.*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "$(GREEN)%-20s$(NC) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(YELLOW)🔥 SHORTCUTS SG COST:$(NC)"
+	@echo "  • $(GREEN)make sgc$(NC)      - SG + Cost analysis completa"
+	@echo "  • $(GREEN)make sgs$(NC)      - Mostra risparmi potenziali"
 
 install: check-python ## Installa solo le dipendenze Python
 	@echo "$(SETUP_EMOJI) $(YELLOW)Installazione dipendenze...$(NC)"
@@ -318,6 +325,53 @@ dev: setup ## 🔧 Setup ambiente di sviluppo
 	@$(PIP) install pytest black flake8 mypy --quiet
 	@echo "$(GREEN)✅ Tool di sviluppo installati$(NC)"
 
+
+## 🆕 COMANDI SG + COST ANALYSIS (OPZIONALI)
+
+sg-cost-analysis: check-aws ## 💰 [NUOVO] Analisi completa Security Groups + Cost Explorer
+	@echo "$(PROD_EMOJI) $(YELLOW)SG + Cost Analysis - Comprehensive Assessment...$(NC)"
+	@$(PYTHON_VENV) main.py --sg-cost-analysis
+	@echo ""
+	@echo "$(GREEN)✅ SG + Cost analysis completato!$(NC)"
+	@echo "$(CYAN)Risultati disponibili:$(NC)"
+	@echo "  📊 Executive Summary: $(WHITE)reports/integrated_analysis/executive_summary.md$(NC)"
+	@echo "  📋 Action Plan: $(WHITE)reports/integrated_analysis/high_priority_actions.csv$(NC)"
+	@echo "  💰 Cleanup Scripts: $(WHITE)reports/integrated_analysis/*.sh$(NC)"
+
+sg-cost-us-east-1: check-aws ## 💰 [NUOVO] SG + Cost analysis solo us-east-1
+	@echo "$(PROD_EMOJI) $(YELLOW)SG + Cost Analysis - US East 1...$(NC)"
+	@$(PYTHON_VENV) main.py --sg-cost-analysis --regions us-east-1
+
+sg-cost-eu-west-1: check-aws ## 💰 [NUOVO] SG + Cost analysis solo eu-west-1
+	@echo "$(PROD_EMOJI) $(YELLOW)SG + Cost Analysis - EU West 1...$(NC)"
+	@$(PYTHON_VENV) main.py --sg-cost-analysis --regions eu-west-1
+
+show-sg-savings: ## 💰 [NUOVO] Mostra risparmi potenziali SG
+	@echo "$(INFO_EMOJI) $(YELLOW)Security Groups savings summary:$(NC)"
+	@if [ -f "reports/integrated_analysis/executive_summary.md" ]; then \
+		echo "📊 Executive Summary:"; \
+		head -20 reports/integrated_analysis/executive_summary.md | grep -E "(Monthly|Annual|Savings)"; \
+		echo ""; \
+		echo "🎯 Priority Actions:"; \
+		if [ -f "reports/integrated_analysis/high_priority_actions.csv" ]; then \
+			head -5 reports/integrated_analysis/high_priority_actions.csv | cut -d',' -f1,2,7 --output-delimiter=' | '; \
+		fi; \
+	else \
+		echo "$(YELLOW)⚠️  Nessun report SG + Cost disponibile. Esegui 'make sg-cost-analysis'$(NC)"; \
+	fi
+
+execute-sg-cleanup: ## ⚠️ [NUOVO] ATTENZIONE: Esegue cleanup SG automatico
+	@echo "$(RED)⚠️  ATTENZIONE: Stai per eseguire cleanup automatico Security Groups!$(NC)"
+	@read -p "Sei sicuro? Scrivi 'yes' per confermare: " confirm && [ "$$confirm" = "yes" ] || (echo "Operazione annullata" && exit 1)
+	@if [ -f "reports/integrated_analysis/immediate_cleanup.sh" ]; then \
+		echo "$(YELLOW)🔧 Eseguendo cleanup automatico...$(NC)"; \
+		bash reports/integrated_analysis/immediate_cleanup.sh; \
+		echo "$(GREEN)✅ Cleanup completato!$(NC)"; \
+	else \
+		echo "$(RED)❌ Script cleanup non trovato. Esegui prima 'make sg-cost-analysis'$(NC)"; \
+	fi
+
+
 ## SHORTCUTS
 
 f: prod-fetch ## Shortcut per prod-fetch
@@ -327,3 +381,5 @@ s: status ## Shortcut per status
 c: clean ## Shortcut per clean
 h: help ## Shortcut per help
 r: show-results ## Shortcut per show-results
+sgc: sg-cost-analysis ## Shortcut per sg-cost-analysis
+sgs: show-sg-savings ## Shortcut per show-sg-savings

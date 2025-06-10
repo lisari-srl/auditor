@@ -670,6 +670,7 @@ Esempi di utilizzo:
   python main.py --dashboard              # Avvia dashboard
   python main.py --quick                  # Audit veloce senza fetch
   python main.py --regions us-east-1      # Regione specifica
+  python main.py --sg-cost-analysis       # 🆕 Analisi SG + Costi completa
         """
     )
     
@@ -694,6 +695,11 @@ Esempi di utilizzo:
         "--quick",
         action="store_true",
         help="Audit veloce: solo audit sui dati esistenti senza pulizia"
+    )
+    group.add_argument(
+        "--sg-cost-analysis",
+        action="store_true",
+        help="🆕 Analisi completa Security Groups + Cost Explorer"
     )
     
     # Opzioni di configurazione
@@ -779,6 +785,66 @@ Esempi di utilizzo:
             # Audit veloce: no fetch, no cleanup
             result = auditor.run_audit_only(force_cleanup=False)
             sys.exit(0 if result["success"] else 1)
+        elif args.sg_cost_analysis:
+            print("🚀 Starting comprehensive Security Groups + Cost Analysis...")
+            
+            # Import del nuovo tool
+            try:
+                from utils.complete_sg_cost_integration import run_complete_sg_cost_analysis
+                
+                # Determina regione
+                target_region = auditor.config.regions[0] if auditor.config.regions else "us-east-1"
+                print(f"🌍 Analyzing region: {target_region}")
+                
+                # Esegui analisi completa
+                result = run_complete_sg_cost_analysis(target_region)
+                
+                # Output risultati
+                print("\n" + "="*60)
+                print("📊 SECURITY GROUPS + COST ANALYSIS COMPLETED!")
+                print("="*60)
+                
+                # Estrai metriche chiave
+                recommendations = result.get('recommendations', {})
+                monthly_savings = recommendations.get('estimated_total_monthly_savings', 0)
+                immediate_actions = len(recommendations.get('immediate_actions', []))
+                medium_actions = len(recommendations.get('medium_term_actions', []))
+                
+                # Summary results
+                print(f"💰 Potential Monthly Savings: ${monthly_savings:.2f}")
+                print(f"📅 Potential Annual Savings: ${monthly_savings * 12:.2f}")
+                print(f"🎯 Immediate Actions Available: {immediate_actions}")
+                print(f"📋 Medium Term Actions: {medium_actions}")
+                print(f"📁 Detailed Reports: reports/integrated_analysis/")
+                
+                # Quick wins summary
+                if immediate_actions > 0:
+                    print(f"\n🚀 Next Steps:")
+                    print(f"1. Review: reports/integrated_analysis/executive_summary.md")
+                    print(f"2. Prioritize: reports/integrated_analysis/high_priority_actions.csv")
+                    print(f"3. Execute: reports/integrated_analysis/immediate_cleanup.sh")
+                    print(f"4. Monitor: reports/integrated_analysis/setup_monitoring.sh")
+                
+                # Exit code based on findings
+                if monthly_savings > 50:
+                    print(f"\n💡 HIGH SAVINGS POTENTIAL: ${monthly_savings:.2f}/month!")
+                    sys.exit(0)
+                elif monthly_savings > 10:
+                    print(f"\n✅ MODERATE SAVINGS FOUND: ${monthly_savings:.2f}/month")
+                    sys.exit(0)
+                else:
+                    print(f"\n✅ ANALYSIS COMPLETED: Limited savings opportunities")
+                    sys.exit(0)
+                    
+            except ImportError as e:
+                print(f"❌ SG Cost Analysis tool not available: {e}")
+                print("💡 Make sure utils/complete_sg_cost_integration.py exists")
+                sys.exit(1)
+            except Exception as e:
+                print(f"❌ Error during SG Cost Analysis: {e}")
+                import traceback
+                traceback.print_exc()
+                sys.exit(1)
         else:
             # Audit completo (default)
             result = asyncio.run(auditor.run_full_audit(use_cache=True, force_cleanup=force_cleanup))
