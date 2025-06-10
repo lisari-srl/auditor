@@ -609,6 +609,488 @@ class SecurityDashboard:
                 
         except Exception as e:
             st.error(f"Errore generazione tabella: {e}")
+
+    # ========== NUOVI METODI VPC ==========
+    
+    def render_vpc_overview(self):
+        """Render overview VPC e networking"""
+        st.subheader("🌐 VPC & Network Infrastructure")
+        
+        # Carica dati VPC
+        vpc_audit_data = self.load_json("vpc_audit.json")
+        vpc_findings = self.load_security_findings()
+        
+        if not vpc_audit_data:
+            st.warning("⚠️ Nessun dato VPC disponibile. Eseguire prima `python main.py --vpc-analysis`")
+            return
+        
+        # Extract data
+        metadata = vpc_audit_data.get("metadata", {})
+        network_topology = vpc_audit_data.get("network_topology", {})
+        cost_analysis = vpc_audit_data.get("cost_analysis", {})
+        
+        # VPC Overview metrics
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric(
+                label="🏗️ Total VPCs",
+                value=metadata.get("total_vpcs", 0),
+                delta="Network isolation"
+            )
+        
+        with col2:
+            st.metric(
+                label="🔗 Total Subnets",
+                value=metadata.get("total_subnets", 0),
+                delta="Network segments"
+            )
+        
+        with col3:
+            st.metric(
+                label="🌐 NAT Gateways",
+                value=metadata.get("total_nat_gateways", 0),
+                delta=f"${cost_analysis.get('total_monthly_nat_cost', 0):.0f}/month"
+            )
+        
+        with col4:
+            potential_savings = cost_analysis.get("potential_monthly_savings", 0)
+            st.metric(
+                label="💰 Potential Savings",
+                value=f"${potential_savings:.2f}/month",
+                delta=f"${potential_savings * 12:.2f}/year"
+            )
+
+    def render_network_topology_advanced(self):
+        """Render topologia di rete avanzata"""
+        st.subheader("🏗️ Network Topology Analysis")
+        
+        vpc_audit_data = self.load_json("vpc_audit.json")
+        if not vpc_audit_data:
+            st.info("No VPC topology data available")
+            return
+        
+        network_topology = vpc_audit_data.get("network_topology", {})
+        
+        if not network_topology:
+            st.info("No network topology found")
+            return
+        
+        # VPC selector
+        vpc_ids = list(network_topology.keys())
+        if not vpc_ids:
+            st.info("No VPCs found in topology")
+            return
+        
+        selected_vpc = st.selectbox("Select VPC to analyze:", vpc_ids)
+        
+        if selected_vpc:
+            vpc_data = network_topology[selected_vpc]
+            
+            # VPC Info
+            st.markdown(f"### VPC {selected_vpc}")
+            vpc_info = vpc_data.get("vpc_info", {})
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.write(f"**CIDR Block**: {vpc_info.get('CidrBlock', 'N/A')}")
+                st.write(f"**State**: {vpc_info.get('State', 'N/A')}")
+                st.write(f"**Is Default**: {vpc_info.get('IsDefault', False)}")
+            
+            with col2:
+                st.write(f"**Total Subnets**: {vpc_data.get('total_subnets', 0)}")
+                st.write(f"**Availability Zones**: {len(vpc_data.get('availability_zones', []))}")
+                st.write(f"**NAT Gateways**: {len(vpc_data.get('nat_gateways', []))}")
+            
+            # Subnet Distribution
+            st.markdown("#### Subnet Distribution")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                public_subnets = vpc_data.get("public_subnets", [])
+                st.metric("🌍 Public Subnets", len(public_subnets))
+                
+                if public_subnets:
+                    with st.expander("View Public Subnets"):
+                        for subnet in public_subnets:
+                            st.write(f"- {subnet.get('SubnetId')} ({subnet.get('CidrBlock')}) - {subnet.get('AvailabilityZone')}")
+            
+            with col2:
+                private_subnets = vpc_data.get("private_subnets", [])
+                st.metric("🔒 Private Subnets", len(private_subnets))
+                
+                if private_subnets:
+                    with st.expander("View Private Subnets"):
+                        for subnet in private_subnets:
+                            st.write(f"- {subnet.get('SubnetId')} ({subnet.get('CidrBlock')}) - {subnet.get('AvailabilityZone')}")
+            
+            with col3:
+                isolated_subnets = vpc_data.get("isolated_subnets", [])
+                st.metric("🏝️ Isolated Subnets", len(isolated_subnets))
+                
+                if isolated_subnets:
+                    with st.expander("View Isolated Subnets"):
+                        for subnet in isolated_subnets:
+                            st.write(f"- {subnet.get('SubnetId')} ({subnet.get('CidrBlock')}) - {subnet.get('AvailabilityZone')}")
+            
+            # CIDR Utilization
+            cidr_util = vpc_data.get("cidr_utilization", {})
+            if cidr_util and not cidr_util.get("error"):
+                st.markdown("#### CIDR Utilization")
+                
+                total_ips = cidr_util.get("vpc_total_ips", 0)
+                allocated_ips = cidr_util.get("subnet_allocated_ips", 0)
+                utilization = cidr_util.get("utilization_percent", 0)
+                
+                # Progress bar for utilization
+                st.progress(utilization / 100)
+                st.write(f"**Utilization**: {utilization:.1f}% ({allocated_ips:,} of {total_ips:,} IPs allocated)")
+                
+                if utilization < 20:
+                    st.info("💡 Low CIDR utilization - consider smaller VPC for future deployments")
+                elif utilization > 80:
+                    st.warning("⚠️ High CIDR utilization - consider planning for expansion")
+            
+            # Network Gateways
+            st.markdown("#### Network Gateways")
+            
+            igws = vpc_data.get("internet_gateways", [])
+            nat_gws = vpc_data.get("nat_gateways", [])
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write(f"**Internet Gateways**: {len(igws)}")
+                if igws:
+                    for igw in igws:
+                        st.write(f"- {igw.get('InternetGatewayId')} ({igw.get('State', 'unknown')})")
+            
+            with col2:
+                st.write(f"**NAT Gateways**: {len(nat_gws)}")
+                if nat_gws:
+                    for nat_gw in nat_gws:
+                        state = nat_gw.get("State", "unknown")
+                        cost_per_month = 45.36 if state == "available" else 0
+                        st.write(f"- {nat_gw.get('NatGatewayId')} ({state}) - ${cost_per_month:.2f}/month")
+
+    def render_vpc_cost_analysis(self):
+        """Render analisi costi VPC"""
+        st.subheader("💰 VPC Cost Analysis")
+        
+        vpc_audit_data = self.load_json("vpc_audit.json")
+        if not vpc_audit_data:
+            st.info("No VPC cost data available")
+            return
+        
+        cost_analysis = vpc_audit_data.get("cost_analysis", {})
+        
+        # Cost Overview
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            monthly_nat_cost = cost_analysis.get("total_monthly_nat_cost", 0)
+            st.metric(
+                label="💸 NAT Gateway Costs",
+                value=f"${monthly_nat_cost:.2f}/month",
+                delta=f"${monthly_nat_cost * 12:.2f}/year"
+            )
+        
+        with col2:
+            potential_savings = cost_analysis.get("potential_monthly_savings", 0)
+            st.metric(
+                label="💰 Potential Savings",
+                value=f"${potential_savings:.2f}/month",
+                delta=f"{(potential_savings/monthly_nat_cost*100) if monthly_nat_cost > 0 else 0:.1f}% reduction"
+            )
+        
+        with col3:
+            vpc_endpoints = cost_analysis.get("total_vpc_endpoints", 0)
+            st.metric(
+                label="🔗 VPC Endpoints",
+                value=vpc_endpoints,
+                delta="Data transfer savings"
+            )
+        
+        # Optimization Opportunities
+        optimizations = cost_analysis.get("optimization_opportunities", [])
+        
+        if optimizations:
+            st.markdown("#### 🎯 Cost Optimization Opportunities")
+            
+            for opt in optimizations:
+                with st.expander(f"💰 {opt.get('recommendation', 'Optimization')} - ${opt.get('potential_monthly_savings', 0):.2f}/month"):
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.write(f"**VPC**: {opt.get('vpc_id', 'N/A')}")
+                        st.write(f"**Current NAT Count**: {opt.get('current_nat_count', 0)}")
+                        st.write(f"**Monthly Savings**: ${opt.get('potential_monthly_savings', 0):.2f}")
+                    
+                    with col2:
+                        st.write(f"**Annual Savings**: ${opt.get('potential_monthly_savings', 0) * 12:.2f}")
+                        st.write(f"**Recommendation**: {opt.get('recommendation', 'N/A')}")
+                        
+                        if st.button(f"Generate Optimization Script", key=f"opt_{opt.get('vpc_id')}"):
+                            script = self.generate_nat_optimization_script(opt)
+                            st.code(script, language='bash')
+        else:
+            st.success("✅ No cost optimization opportunities found - your VPC setup is already optimized!")
+
+    def render_vpc_security_analysis(self):
+        """Render analisi sicurezza VPC"""
+        st.subheader("🛡️ VPC Security Analysis")
+        
+        # Carica VPC findings
+        findings_data = self.load_security_findings()
+        if not findings_data:
+            st.info("No security findings available")
+            return
+        
+        findings = findings_data.get("findings", [])
+        
+        # Filter VPC-related findings
+        vpc_findings = [f for f in findings if f.get("resource_type") in ["VPC", "Subnet", "RouteTable", "NATGateway"]]
+        
+        if not vpc_findings:
+            st.success("✅ No VPC security issues found!")
+            return
+        
+        # Security metrics
+        security_severity = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+        for finding in vpc_findings:
+            severity = finding.get("severity", "low")
+            security_severity[severity] += 1
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("🔴 Critical", security_severity["critical"])
+        with col2:
+            st.metric("🟠 High", security_severity["high"])
+        with col3:
+            st.metric("🟡 Medium", security_severity["medium"])
+        with col4:
+            st.metric("🔵 Low", security_severity["low"])
+        
+        # VPC Security Issues
+        if security_severity["critical"] > 0 or security_severity["high"] > 0:
+            st.markdown("#### 🚨 Priority Security Issues")
+            
+            priority_findings = [f for f in vpc_findings if f.get("severity") in ["critical", "high"]]
+            
+            for finding in priority_findings[:5]:  # Show top 5
+                severity = finding.get("severity", "low")
+                severity_color = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵"}[severity]
+                
+                with st.expander(f"{severity_color} {finding.get('rule_name', 'Security Issue')} - {finding.get('resource_name', 'Unknown')}"):
+                    st.write(f"**Resource Type**: {finding.get('resource_type', 'N/A')}")
+                    st.write(f"**Description**: {finding.get('description', 'N/A')}")
+                    st.write(f"**Recommendation**: {finding.get('recommendation', 'N/A')}")
+                    
+                    if finding.get('remediation'):
+                        st.code(finding['remediation'], language='bash')
+        
+        # VPC Configuration Issues
+        vpc_config_findings = [f for f in vpc_findings if "VPC" in f.get("resource_type", "")]
+        
+        if vpc_config_findings:
+            st.markdown("#### 🏗️ VPC Configuration Issues")
+            
+            for finding in vpc_config_findings:
+                severity = finding.get("severity", "low")
+                if severity in ["medium", "low"]:  # Show non-critical issues
+                    st.info(f"**{finding.get('rule_name')}**: {finding.get('description')}")
+
+    def render_network_recommendations(self):
+        """Render raccomandazioni di rete"""
+        st.subheader("💡 Network Optimization Recommendations")
+        
+        vpc_audit_data = self.load_json("vpc_audit.json")
+        if not vpc_audit_data:
+            st.info("No VPC data for recommendations")
+            return
+        
+        # Analisi dati per raccomandazioni
+        network_topology = vpc_audit_data.get("network_topology", {})
+        cost_analysis = vpc_audit_data.get("cost_analysis", {})
+        
+        recommendations = []
+        
+        # Generate recommendations based on analysis
+        for vpc_id, vpc_data in network_topology.items():
+            vpc_recommendations = self.generate_vpc_recommendations(vpc_id, vpc_data, cost_analysis)
+            recommendations.extend(vpc_recommendations)
+        
+        if not recommendations:
+            st.success("✅ Your VPC configuration is well-optimized! No recommendations at this time.")
+            return
+        
+        # Group recommendations by priority
+        priority_groups = {"High Priority": [], "Medium Priority": [], "Low Priority": []}
+        
+        for rec in recommendations:
+            priority = rec.get("priority", "Low Priority")
+            if priority in priority_groups:
+                priority_groups[priority].append(rec)
+        
+        # Display recommendations by priority
+        for priority, recs in priority_groups.items():
+            if recs:
+                st.markdown(f"#### {priority}")
+                
+                for rec in recs:
+                    icon = {"High Priority": "🚨", "Medium Priority": "⚠️", "Low Priority": "💡"}[priority]
+                    
+                    with st.expander(f"{icon} {rec['title']}"):
+                        st.write(f"**VPC**: {rec.get('vpc_id', 'N/A')}")
+                        st.write(f"**Issue**: {rec.get('description', 'N/A')}")
+                        st.write(f"**Recommendation**: {rec.get('recommendation', 'N/A')}")
+                        
+                        if rec.get('estimated_savings'):
+                            st.write(f"**Potential Savings**: ${rec['estimated_savings']:.2f}/month")
+                        
+                        if rec.get('implementation_steps'):
+                            st.markdown("**Implementation Steps:**")
+                            for step in rec['implementation_steps']:
+                                st.write(f"- {step}")
+
+    def generate_vpc_recommendations(self, vpc_id, vpc_data, cost_analysis):
+        """Genera raccomandazioni specifiche per VPC"""
+        recommendations = []
+        
+        # Check for default VPC usage
+        vpc_info = vpc_data.get("vpc_info", {})
+        if vpc_info.get("IsDefault"):
+            recommendations.append({
+                "title": "Migrate from Default VPC",
+                "vpc_id": vpc_id,
+                "priority": "High Priority",
+                "description": "Using default VPC is not recommended for production workloads",
+                "recommendation": "Create dedicated VPC with proper network segmentation",
+                "implementation_steps": [
+                    "Design new VPC with appropriate CIDR blocks",
+                    "Create public and private subnets across multiple AZs", 
+                    "Set up NAT Gateway for private subnet internet access",
+                    "Migrate resources with proper testing"
+                ]
+            })
+        
+        # Check for single AZ deployment
+        availability_zones = vpc_data.get("availability_zones", [])
+        if len(availability_zones) == 1:
+            recommendations.append({
+                "title": "Implement Multi-AZ Deployment",
+                "vpc_id": vpc_id,
+                "priority": "High Priority",
+                "description": f"VPC is deployed in single AZ: {availability_zones[0]}",
+                "recommendation": "Distribute resources across multiple AZs for high availability",
+                "implementation_steps": [
+                    "Create subnets in at least 2 additional AZs",
+                    "Deploy applications across multiple AZs",
+                    "Configure load balancers for AZ distribution",
+                    "Test failover scenarios"
+                ]
+            })
+        
+        # Check for too many NAT Gateways
+        nat_gateways = vpc_data.get("nat_gateways", [])
+        active_nat_gws = [ng for ng in nat_gateways if ng.get("State") == "available"]
+        
+        if len(active_nat_gws) > 2:
+            potential_savings = (len(active_nat_gws) - 1) * 45.36
+            recommendations.append({
+                "title": "Optimize NAT Gateway Usage",
+                "vpc_id": vpc_id,
+                "priority": "Medium Priority",
+                "description": f"VPC has {len(active_nat_gws)} NAT Gateways",
+                "recommendation": "Consider consolidating NAT Gateways to reduce costs",
+                "estimated_savings": potential_savings,
+                "implementation_steps": [
+                    "Analyze traffic patterns for each NAT Gateway",
+                    "Identify NAT Gateways with low utilization",
+                    "Plan route table updates for consolidation",
+                    "Implement changes during maintenance window"
+                ]
+            })
+        
+        # Check for missing private subnets
+        public_subnets = len(vpc_data.get("public_subnets", []))
+        private_subnets = len(vpc_data.get("private_subnets", []))
+        
+        if public_subnets > 0 and private_subnets == 0:
+            recommendations.append({
+                "title": "Implement Network Segmentation",
+                "vpc_id": vpc_id,
+                "priority": "High Priority",
+                "description": "VPC only has public subnets - missing private network tier",
+                "recommendation": "Create private subnets for backend services",
+                "implementation_steps": [
+                    "Design private subnet CIDR blocks",
+                    "Create private subnets in each AZ",
+                    "Set up NAT Gateway for internet access",
+                    "Move non-public services to private subnets"
+                ]
+            })
+        
+        # Check CIDR utilization
+        cidr_util = vpc_data.get("cidr_utilization", {})
+        if cidr_util and not cidr_util.get("error"):
+            utilization = cidr_util.get("utilization_percent", 0)
+            
+            if utilization < 10:
+                recommendations.append({
+                    "title": "Optimize CIDR Block Size",
+                    "vpc_id": vpc_id,
+                    "priority": "Low Priority",
+                    "description": f"Very low CIDR utilization: {utilization:.1f}%",
+                    "recommendation": "Consider smaller CIDR blocks for future VPCs",
+                    "implementation_steps": [
+                        "Document current IP requirements",
+                        "Plan for future growth",
+                        "Use smaller CIDR blocks for new VPCs",
+                        "Implement IP Address Management (IPAM)"
+                    ]
+                })
+        
+        return recommendations
+
+    def generate_nat_optimization_script(self, optimization):
+        """Genera script di ottimizzazione NAT Gateway"""
+        vpc_id = optimization.get("vpc_id", "")
+        savings = optimization.get("potential_monthly_savings", 0)
+        
+        script = f"""#!/bin/bash
+# NAT Gateway Optimization Script for VPC {vpc_id}
+# Potential monthly savings: ${savings:.2f}
+
+set -e
+
+echo "🔍 Analyzing NAT Gateways in VPC {vpc_id}..."
+
+# List current NAT Gateways
+echo "Current NAT Gateways:"
+aws ec2 describe-nat-gateways --filter "Name=vpc-id,Values={vpc_id}" \\
+    --query 'NatGateways[?State==`available`].[NatGatewayId,SubnetId,State]' \\
+    --output table
+
+# Check route tables using NAT Gateways
+echo "Checking route table dependencies..."
+aws ec2 describe-route-tables --filters "Name=vpc-id,Values={vpc_id}" \\
+    --query 'RouteTables[?Routes[?starts_with(GatewayId, `nat-`)]].[RouteTableId,Routes[?starts_with(GatewayId, `nat-`)].GatewayId]' \\
+    --output table
+
+echo "⚠️  WARNING: Manual verification required!"
+echo "1. Ensure no critical traffic depends on redundant NAT Gateways"
+echo "2. Update route tables to point to consolidated NAT Gateway"
+echo "3. Test connectivity after changes"
+echo ""
+echo "Example commands (REVIEW BEFORE RUNNING):"
+echo "# aws ec2 delete-nat-gateway --nat-gateway-id nat-xxxxxxxxx"
+echo "# aws ec2 replace-route --route-table-id rtb-xxxxxxxxx --destination-cidr-block 0.0.0.0/0 --nat-gateway-id nat-yyyyyyyyy"
+"""
+        
+        return script
     
     def render_sidebar(self):
         """Render sidebar con controlli"""
@@ -668,6 +1150,9 @@ class SecurityDashboard:
                     except Exception as e:
                         st.error(f"❌ Error: {str(e)}")
         
+        # VPC Actions
+        self.render_vpc_sidebar_actions()
+        
         # Data freshness
         data_files = ["ec2_raw.json", "sg_raw.json", "iam_raw.json"]
         oldest_file = None
@@ -686,6 +1171,50 @@ class SecurityDashboard:
                 st.sidebar.info(f"⏰ Data age: {age.seconds // 3600} hours old")
             else:
                 st.sidebar.success(f"⏰ Data age: {age.seconds // 60} minutes old")
+
+    def render_vpc_sidebar_actions(self):
+        """Render azioni rapide VPC nella sidebar"""
+        st.sidebar.subheader("🌐 VPC Actions")
+        
+        col1, col2 = st.sidebar.columns(2)
+        
+        with col1:
+            if st.button("📡 VPC Fetch", help="Fetch VPC data"):
+                with st.spinner("Fetching VPC data..."):
+                    try:
+                        main_path = str(Path(__file__).parent.parent / "main.py")
+                        result = subprocess.run(
+                            ["python", main_path, "--vpc-analysis"],
+                            capture_output=True, text=True,
+                            cwd=str(Path(__file__).parent.parent)
+                        )
+                        
+                        if result.returncode == 0:
+                            st.success("✅ VPC analysis completed")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ VPC analysis failed: {result.stderr}")
+                    except Exception as e:
+                        st.error(f"❌ Error: {str(e)}")
+        
+        with col2:
+            if st.button("💰 Cost Opt", help="VPC cost optimization"):
+                with st.spinner("Analyzing costs..."):
+                    try:
+                        main_path = str(Path(__file__).parent.parent / "main.py")
+                        result = subprocess.run(
+                            ["python", main_path, "--network-optimization"],
+                            capture_output=True, text=True,
+                            cwd=str(Path(__file__).parent.parent)
+                        )
+                        
+                        if result.returncode == 0:
+                            st.success("✅ Cost analysis completed")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ Cost analysis failed: {result.stderr}")
+                    except Exception as e:
+                        st.error(f"❌ Error: {str(e)}")
     
     def run(self):
         """Esegue il dashboard"""
@@ -696,12 +1225,13 @@ class SecurityDashboard:
             # Main content
             self.render_header()
             
-            # Navigation tabs
-            tab1, tab2, tab3, tab4 = st.tabs([
+            # Navigation tabs - AGGIORNATO con VPC
+            tab1, tab2, tab3, tab4, tab5 = st.tabs([
                 "🏠 Overview", 
                 "🚨 Security", 
                 "📦 Resources", 
-                "🌐 Network"
+                "🌐 Network & VPC",  # NUOVO TAB
+                "💰 Cost Analysis"   # NUOVO TAB
             ])
             
             with tab1:
@@ -711,12 +1241,21 @@ class SecurityDashboard:
             
             with tab2:
                 self.render_critical_findings()
+                st.markdown("---")
+                self.render_vpc_security_analysis()  # Aggiunto
             
             with tab3:
                 self.render_resource_inventory()
             
-            with tab4:
-                self.render_network_map()
+            with tab4:  # NUOVO TAB VPC
+                self.render_vpc_overview()
+                st.markdown("---")
+                self.render_network_topology_advanced()
+                st.markdown("---")
+                self.render_network_recommendations()
+            
+            with tab5:  # NUOVO TAB COST
+                self.render_vpc_cost_analysis()
                 
         except Exception as e:
             st.error(f"❌ Errore dashboard: {e}")

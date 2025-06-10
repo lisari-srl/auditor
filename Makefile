@@ -71,6 +71,17 @@ help: ## Mostra questo help
 	@echo "$(YELLOW)🔥 SHORTCUTS SG COST:$(NC)"
 	@echo "  • $(GREEN)make sgc$(NC)      - SG + Cost analysis completa"
 	@echo "  • $(GREEN)make sgs$(NC)      - Mostra risparmi potenziali"
+	@echo ""
+	@echo "$(YELLOW)🌐 COMANDI VPC & NETWORK:$(NC)"
+	@echo ""
+	@grep -E '^[a-zA-Z_-]+:.*?## .*🌐.*$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "$(GREEN)%-20s$(NC) %s\n", $1, $2}'
+	@echo ""
+	@echo "$(YELLOW)🔥 VPC SHORTCUTS:$(NC)"
+	@echo "  • $(GREEN)make vf$(NC)      - VPC fetch"
+	@echo "  • $(GREEN)make va$(NC)      - VPC audit"  
+	@echo "  • $(GREEN)make vd$(NC)      - VPC dashboard"
+	@echo "  • $(GREEN)make vc$(NC)      - VPC costs"
+	@echo "  • $(GREEN)make vs$(NC)      - VPC security"
 
 install: check-python ## Installa solo le dipendenze Python
 	@echo "$(SETUP_EMOJI) $(YELLOW)Installazione dipendenze...$(NC)"
@@ -371,6 +382,112 @@ execute-sg-cleanup: ## ⚠️ [NUOVO] ATTENZIONE: Esegue cleanup SG automatico
 		echo "$(RED)❌ Script cleanup non trovato. Esegui prima 'make sg-cost-analysis'$(NC)"; \
 	fi
 
+# ===== COMANDI VPC E NETWORK =====
+
+vpc-fetch: check-aws ## 🌐 [VPC] Fetch completo dati VPC e network
+	@echo "$(PROD_EMOJI) $(YELLOW)VPC Fetch - Download network infrastructure...$(NC)"
+	@$(PYTHON_VENV) main.py --vpc-analysis
+	@echo "$(GREEN)✅ VPC fetch completato!$(NC)"
+
+vpc-audit: check-venv ## 🛡️ [VPC] Audit VPC e network security
+	@echo "$(PROD_EMOJI) $(YELLOW)VPC Audit - Network security analysis...$(NC)"
+	@$(PYTHON_VENV) main.py --vpc-analysis --audit-only
+	@echo "$(GREEN)✅ VPC audit completato!$(NC)"
+
+network-cost: check-aws ## 💰 [VPC] Analisi costi network (NAT, EIP, LB)
+	@echo "$(PROD_EMOJI) $(YELLOW)Network Cost Analysis...$(NC)"
+	@$(PYTHON_VENV) main.py --network-optimization
+	@echo "$(GREEN)✅ Network cost analysis completato!$(NC)"
+
+vpc-full: check-aws ## 🚀 [VPC] Analisi completa VPC + costi + security
+	@echo "$(PROD_EMOJI) $(YELLOW)VPC Full Analysis - Complete network assessment...$(NC)"
+	@$(PYTHON_VENV) main.py --vpc-analysis --network-optimization
+	@echo ""
+	@echo "$(GREEN)✅ VPC full analysis completato!$(NC)"
+	@echo "$(CYAN)Risultati:$(NC)"
+	@echo "  📊 VPC Dashboard: $(WHITE)make dashboard$(NC)"
+	@echo "  📁 VPC Reports: $(WHITE)ls -la reports/vpc/$(NC)"
+	@echo "  💰 Cost Reports: $(WHITE)cat reports/vpc/vpc_cost_analysis.json$(NC)"
+
+vpc-dashboard: vpc-audit ## 📊 [VPC] Dashboard VPC con network topology
+	@echo "$(PROD_EMOJI) $(YELLOW)VPC Dashboard - Network visualization...$(NC)"
+	@echo "$(INFO_EMOJI) Dashboard con sezione VPC: $(GREEN)http://localhost:8501$(NC)"
+	@$(PYTHON_VENV) main.py --dashboard
+
+vpc-topology: check-venv ## 🗺️ [VPC] Genera mappa topologia network
+	@echo "$(INFO_EMOJI) $(YELLOW)Generazione network topology...$(NC)"
+	@if [ -f "reports/vpc/vpc_audit_summary.json" ]; then \
+		echo "$(CYAN)Network Topology:$(NC)"; \
+		$(PYTHON_VENV) -c "\
+import json; \
+data = json.load(open('reports/vpc/vpc_audit_summary.json')); \
+topology = data.get('summary', {}).get('network_topology', {}); \
+print(f'📊 VPCs trovate: {len(topology)}'); \
+[print(f'  🏗️  VPC {vpc_id}: {info.get(\"total_subnets\", 0)} subnets, {len(info.get(\"nat_gateways\", []))} NAT GW') for vpc_id, info in topology.items()]"; \
+	else \
+		echo "$(YELLOW)⚠️  Nessun dato topology. Esegui 'make vpc-audit'$(NC)"; \
+	fi
+
+vpc-costs: check-venv ## 💸 [VPC] Mostra breakdown costi network
+	@echo "$(INFO_EMOJI) $(YELLOW)VPC Cost Breakdown:$(NC)"
+	@if [ -f "reports/vpc/vpc_audit_summary.json" ]; then \
+		$(PYTHON_VENV) -c "\
+import json; \
+data = json.load(open('reports/vpc/vpc_audit_summary.json')); \
+summary = data.get('summary', {}); \
+print(f'💰 Risparmi mensili potenziali: ${summary.get(\"total_monthly_cost_savings\", 0):.2f}'); \
+print(f'📅 Risparmi annuali: ${summary.get(\"total_annual_cost_savings\", 0):.2f}'); \
+cost_opts = summary.get('cost_optimizations', []); \
+print(f'🎯 Opportunità ottimizzazione: {len(cost_opts)}'); \
+[print(f'  • {opt.get(\"type\", \"Unknown\")}: ${opt.get(\"monthly_savings\", 0):.2f}/mese') for opt in cost_opts[:5]]"; \
+	else \
+		echo "$(YELLOW)⚠️  Nessun dato costi. Esegui 'make vpc-audit'$(NC)"; \
+	fi
+
+vpc-security: check-venv ## 🔒 [VPC] Security findings VPC
+	@echo "$(INFO_EMOJI) $(YELLOW)VPC Security Issues:$(NC)"
+	@if [ -f "reports/security_findings.json" ]; then \
+		$(PYTHON_VENV) -c "\
+import json; \
+data = json.load(open('reports/security_findings.json')); \
+vpc_findings = [f for f in data['findings'] if f['resource_type'] in ['VPC', 'Subnet', 'RouteTable', 'NATGateway']]; \
+by_severity = {'critical': 0, 'high': 0, 'medium': 0, 'low': 0}; \
+[by_severity.update({f['severity']: by_severity[f['severity']] + 1}) for f in vpc_findings if f['severity'] in by_severity]; \
+print(f'🛡️  VPC Security Findings: {len(vpc_findings)}'); \
+print(f'🔴 Critical: {by_severity[\"critical\"]}'); \
+print(f'🟠 High: {by_severity[\"high\"]}'); \
+print(f'🟡 Medium: {by_severity[\"medium\"]}'); \
+print(f'🔵 Low: {by_severity[\"low\"]}'); \
+if by_severity['critical'] > 0: print('🚨 URGENT: Fix critical VPC security issues!')"; \
+	else \
+		echo "$(YELLOW)⚠️  Nessun security data. Esegui 'make prod-audit'$(NC)"; \
+	fi
+
+vpc-optimize: check-venv ## ⚡ [VPC] Esegue script ottimizzazione VPC
+	@echo "$(WARN_EMOJI) $(YELLOW)ATTENZIONE: Ottimizzazione VPC può impattare la rete!$(NC)"
+	@read -p "Sei sicuro? Scrivi 'yes' per confermare: " confirm && [ "$confirm" = "yes" ] || (echo "Operazione annullata" && exit 1)
+	@if [ -f "reports/vpc/vpc_optimization.sh" ]; then \
+		echo "$(YELLOW)🔧 Eseguendo ottimizzazione VPC...$(NC)"; \
+		bash reports/vpc/vpc_optimization.sh; \
+		echo "$(GREEN)✅ Ottimizzazione completata!$(NC)"; \
+	else \
+		echo "$(RED)❌ Script ottimizzazione non trovato. Esegui prima 'make vpc-audit'$(NC)"; \
+	fi
+
+# ===== ANALISI REGIONALI VPC =====
+
+vpc-us-east-1: check-aws ## 🇺🇸 [VPC] Analisi VPC solo us-east-1
+	@echo "$(PROD_EMOJI) $(YELLOW)VPC Analysis - US East 1...$(NC)"
+	@$(PYTHON_VENV) main.py --vpc-analysis --regions us-east-1
+
+vpc-eu-west-1: check-aws ## 🇪🇺 [VPC] Analisi VPC solo eu-west-1  
+	@echo "$(PROD_EMOJI) $(YELLOW)VPC Analysis - EU West 1...$(NC)"
+	@$(PYTHON_VENV) main.py --vpc-analysis --regions eu-west-1
+
+vpc-multi-region: check-aws ## 🌍 [VPC] Analisi VPC multi-regione
+	@echo "$(PROD_EMOJI) $(YELLOW)VPC Analysis - Multiple Regions...$(NC)"
+	@$(PYTHON_VENV) main.py --vpc-analysis --regions us-east-1,eu-west-1,ap-southeast-1
+
 
 ## SHORTCUTS
 
@@ -383,3 +500,9 @@ h: help ## Shortcut per help
 r: show-results ## Shortcut per show-results
 sgc: sg-cost-analysis ## Shortcut per sg-cost-analysis
 sgs: show-sg-savings ## Shortcut per show-sg-savings
+vf: vpc-fetch ## Shortcut per vpc-fetch
+va: vpc-audit ## Shortcut per vpc-audit  
+vd: vpc-dashboard ## Shortcut per vpc-dashboard
+vc: vpc-costs ## Shortcut per vpc-costs
+vs: vpc-security ## Shortcut per vpc-security
+vt: vpc-topology ## Shortcut per vpc-topology

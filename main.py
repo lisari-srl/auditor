@@ -740,6 +740,17 @@ Esempi di utilizzo:
         default=8501,
         help="Porta per il dashboard (default: 8501)"
     )
+    parser.add_argument(
+    "--vpc-analysis",
+    action="store_true",
+    help="🌐 [NEW] Complete VPC and network infrastructure analysis"
+    )
+
+    parser.add_argument(
+        "--network-optimization",
+        action="store_true", 
+        help="💰 [NEW] Network cost optimization analysis (NAT Gateway, VPC Endpoints)"
+    )
     
     args = parser.parse_args()
     
@@ -844,7 +855,91 @@ Esempi di utilizzo:
                 print(f"❌ Error during SG Cost Analysis: {e}")
                 import traceback
                 traceback.print_exc()
+                sys.exit(1)    
+        
+        elif args.vpc_analysis:
+            print("🌐 Starting comprehensive VPC analysis...")
+            
+            # Assicurati che tutti i dati VPC siano stati scaricati
+            fetch_result = asyncio.run(auditor.run_fetch_only(force_cleanup=force_cleanup))
+            if not fetch_result["success"]:
+                print("❌ Failed to fetch VPC data")
                 sys.exit(1)
+            
+            # Processo dati VPC
+            from utils.vpc_data_processor import process_vpc_extended_data
+            if not process_vpc_extended_data():
+                print("⚠️  VPC data processing had issues")
+            
+            # Esegui audit VPC per tutte le regioni
+            total_vpc_findings = []
+            for region in auditor.config.regions:
+                print(f"\n🌍 VPC Analysis for {region}...")
+                
+                region_auditor = AuditEngine(region)
+                if region_auditor._init_vpc_auditor():
+                    vpc_findings = region_auditor.run_vpc_audit()
+                    total_vpc_findings.extend(vpc_findings)
+            
+            print(f"\n✅ VPC Analysis completed!")
+            print(f"📊 Total VPC findings: {len(total_vpc_findings)}")
+            print(f"🔴 Critical: {len([f for f in total_vpc_findings if f.severity.value == 'critical'])}")
+            print(f"📁 Reports: reports/vpc/")
+            
+            sys.exit(0 if len(total_vpc_findings) == 0 else 1)
+        elif args.network_optimization:
+            print("💰 Starting network cost optimization analysis...")
+            
+            # Assicurati che tutti i dati siano stati scaricati
+            fetch_result = asyncio.run(auditor.run_fetch_only(force_cleanup=force_cleanup))
+            if not fetch_result["success"]:
+                print("❌ Failed to fetch network data")
+                sys.exit(1)
+            
+            # Processo dati VPC per ottimizzazione
+            from utils.vpc_data_processor import process_vpc_extended_data
+            if not process_vpc_extended_data():
+                print("⚠️  VPC data processing had issues")
+            
+            # Analisi costi network per tutte le regioni
+            total_monthly_savings = 0
+            network_optimizations = []
+            
+            for region in auditor.config.regions:
+                print(f"\n💰 Network optimization for {region}...")
+                
+                try:
+                    # Carica dati processati
+                    all_data = auditor._load_all_processed_data()
+                    
+                    # Analizza costi VPC
+                    from utils.vpc_data_processor import analyze_vpc_costs
+                    vpc_data = {}
+                    for key in ["vpcs", "subnets", "routetables", "internetgateways", "natgateways", "vpcendpoints"]:
+                        file_key = key.replace("tables", "_table") + "_raw"
+                        if file_key in all_data:
+                            vpc_data[key] = all_data[file_key].get(key.title().replace("tables", "Tables"), [])
+                    
+                    cost_analysis = analyze_vpc_costs(vpc_data)
+                    region_savings = cost_analysis.get("potential_monthly_savings", 0)
+                    total_monthly_savings += region_savings
+                    
+                    network_optimizations.extend(cost_analysis.get("optimization_opportunities", []))
+                    
+                    print(f"   💰 {region} potential savings: ${region_savings:.2f}/month")
+                    
+                except Exception as e:
+                    print(f"   ❌ Error analyzing {region}: {e}")
+                    continue
+            
+            print(f"\n✅ Network optimization analysis completed!")
+            print(f"💰 Total potential monthly savings: ${total_monthly_savings:.2f}")
+            print(f"📅 Total potential annual savings: ${total_monthly_savings * 12:.2f}")
+            print(f"🎯 Optimization opportunities: {len(network_optimizations)}")
+            print(f"📁 Reports: reports/vpc/")
+            
+            sys.exit(0 if total_monthly_savings == 0 else 0)
+        
         else:
             # Audit completo (default)
             result = asyncio.run(auditor.run_full_audit(use_cache=True, force_cleanup=force_cleanup))
